@@ -71,11 +71,11 @@ interface BrandProfit { brand_id: string; brand_name: string; revenue: number; c
 interface SkuProfit { sku_id: string; sku_name: string; brand_name: string; revenue: number; cogs: number; profit: number; margin: number; bottles: number }
 interface CustomerProfit { customer_id: string; customer_name: string; revenue: number; profit: number; margin: number; bottles: number }
 interface DayProfit { date: string; Revenue: number; Profit: number }
-interface Totals { revenue: number; cogs: number; profit: number; margin: number; expenses: number; netProfit: number; compStock: number }
+interface Totals { revenue: number; cogs: number; profit: number; margin: number; expenses: number; netProfit: number; compStock: number; compStockGiven: number }
 
 interface ProfitDataset { byBrand: BrandProfit[]; bySku: SkuProfit[]; byCustomer: CustomerProfit[]; daily: DayProfit[]; totals: Totals; freeInward: { sku_name: string; brand_name: string; bottles: number; potentialValue: number }[] }
 
-const EMPTY_TOTALS: Totals = { revenue: 0, cogs: 0, profit: 0, margin: 0, expenses: 0, netProfit: 0, compStock: 0 }
+const EMPTY_TOTALS: Totals = { revenue: 0, cogs: 0, profit: 0, margin: 0, expenses: 0, netProfit: 0, compStock: 0, compStockGiven: 0 }
 const EMPTY_DATASET: ProfitDataset = { byBrand: [], bySku: [], byCustomer: [], daily: [], totals: EMPTY_TOTALS, freeInward: [] }
 
 // ─── Data fetcher ─────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ const EMPTY_DATASET: ProfitDataset = { byBrand: [], bySku: [], byCustomer: [], d
 async function fetchProfitData(supabase: ReturnType<typeof createClient>, from: string, to: string): Promise<ProfitDataset> {
   const [movRes, expRes, stockRes] = await Promise.all([
     supabase.from('stock_movements')
-      .select('movement_type, total_bottles, price_per_bottle, is_free_stock, date, sku_id, customer_id, brand_id, skus(name, brands(id, name)), customers(name)')
+      .select('movement_type, total_bottles, price_per_bottle, cost_per_bottle, is_free_stock, date, sku_id, customer_id, brand_id, skus(name, brands(id, name)), customers(name)')
       .gte('date', from).lte('date', to),
     supabase.from('expenses').select('amount').gte('date', from).lte('date', to),
     supabase.from('current_stock_per_sku').select('sku_id, weighted_avg_cost_per_bottle, default_selling_price_per_bottle'),
@@ -103,22 +103,26 @@ async function fetchProfitData(supabase: ReturnType<typeof createClient>, from: 
   const outward = movements.filter(m => m.movement_type === 'outward')
   const freeInwardMov = movements.filter(m => m.movement_type === 'inward' && m.is_free_stock)
 
+  // Cost per bottle for an outward movement: prefer the snapshot taken at
+  // sale time (cost_per_bottle), falling back to the current weighted-avg
+  // cost for older rows that predate the snapshot column.
+  const unitCost = (m: typeof outward[number]) => m.cost_per_bottle ?? costMap[m.sku_id] ?? 0
+
   // --- Totals ---
-  let totalRevenue = 0, totalCogs = 0, compStockRevenue = 0
+  let totalRevenue = 0, totalCogs = 0, compStockGiven = 0
   outward.forEach(m => {
     const rev = m.total_bottles * (m.price_per_bottle ?? 0)
-    const cost = m.total_bottles * (costMap[m.sku_id] ?? 0)
+    const cost = m.total_bottles * unitCost(m)
     if (!m.is_free_stock) {
       totalRevenue += rev
       totalCogs += cost
-      // If cost ≈ 0 (fully free inward stock diluted the avg), track as comp profit
     } else {
-      compStockRevenue += cost // giving away stock at cost = loss, but shown separately
+      compStockGiven += cost // cost of complimentary stock given to customers
     }
   })
   const totalProfit = totalRevenue - totalCogs
   const margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
-  const netProfit = totalProfit - totalExpenses
+  const netProfit = totalProfit - totalExpenses - compStockGiven
 
   // Complimentary stock received — potential profit (bottles × current sell price)
   const freeSkuMap: Record<string, { sku_name: string; brand_name: string; bottles: number; potentialValue: number }> = {}
@@ -143,7 +147,7 @@ async function fetchProfitData(supabase: ReturnType<typeof createClient>, from: 
     const brandName = (m.skus as any)?.brands?.name ?? '—'
     if (!brandMap[brandId]) brandMap[brandId] = { brand_id: brandId, brand_name: brandName, revenue: 0, cogs: 0, profit: 0, margin: 0, bottles: 0 }
     const rev = m.total_bottles * (m.price_per_bottle ?? 0)
-    const cost = m.total_bottles * (costMap[m.sku_id] ?? 0)
+    const cost = m.total_bottles * unitCost(m)
     brandMap[brandId].revenue += rev
     brandMap[brandId].cogs += cost
     brandMap[brandId].profit += rev - cost
@@ -159,7 +163,7 @@ async function fetchProfitData(supabase: ReturnType<typeof createClient>, from: 
     const brandName = (m.skus as any)?.brands?.name ?? '—'
     if (!skuMap[m.sku_id]) skuMap[m.sku_id] = { sku_id: m.sku_id, sku_name: skuName, brand_name: brandName, revenue: 0, cogs: 0, profit: 0, margin: 0, bottles: 0 }
     const rev = m.total_bottles * (m.price_per_bottle ?? 0)
-    const cost = m.total_bottles * (costMap[m.sku_id] ?? 0)
+    const cost = m.total_bottles * unitCost(m)
     skuMap[m.sku_id].revenue += rev
     skuMap[m.sku_id].cogs += cost
     skuMap[m.sku_id].profit += rev - cost
@@ -175,7 +179,7 @@ async function fetchProfitData(supabase: ReturnType<typeof createClient>, from: 
     const custName = (m.customers as any)?.name ?? '—'
     if (!custMap[custId]) custMap[custId] = { customer_id: custId, customer_name: custName, revenue: 0, profit: 0, margin: 0, bottles: 0 }
     const rev = m.total_bottles * (m.price_per_bottle ?? 0)
-    const cost = m.total_bottles * (costMap[m.sku_id] ?? 0)
+    const cost = m.total_bottles * unitCost(m)
     custMap[custId].revenue += rev
     custMap[custId].profit += rev - cost
     custMap[custId].bottles += m.total_bottles
@@ -188,7 +192,7 @@ async function fetchProfitData(supabase: ReturnType<typeof createClient>, from: 
   outward.filter(m => !m.is_free_stock).forEach(m => {
     if (!dayMap[m.date]) dayMap[m.date] = { rev: 0, profit: 0 }
     const rev = m.total_bottles * (m.price_per_bottle ?? 0)
-    const cost = m.total_bottles * (costMap[m.sku_id] ?? 0)
+    const cost = m.total_bottles * unitCost(m)
     dayMap[m.date].rev += rev
     dayMap[m.date].profit += rev - cost
   })
@@ -198,7 +202,12 @@ async function fetchProfitData(supabase: ReturnType<typeof createClient>, from: 
 
   return {
     byBrand, bySku, byCustomer, daily, freeInward,
-    totals: { revenue: totalRevenue, cogs: totalCogs, profit: totalProfit, margin, expenses: totalExpenses, netProfit, compStock: freeInward.reduce((s, f) => s + f.potentialValue, 0) },
+    totals: {
+      revenue: totalRevenue, cogs: totalCogs, profit: totalProfit, margin,
+      expenses: totalExpenses, netProfit,
+      compStock: freeInward.reduce((s, f) => s + f.potentialValue, 0),
+      compStockGiven,
+    },
   }
 }
 
@@ -339,13 +348,13 @@ export default function ProfitPage() {
           <SummaryCard label="Net Profit" value={formatINR(data.totals.netProfit, 0)}
             delta={{ current: data.totals.netProfit, previous: prevData.totals.netProfit }}
             prevValue={formatINR(prevData.totals.netProfit, 0)}
-            sub="Gross profit − expenses"
+            sub="Gross profit − expenses − free stock given"
             accent={data.totals.netProfit >= 0 ? 'border-emerald-300' : 'border-red-300'} />
         </div>
 
         {/* Callout cards: best performer / most improved / declining */}
         {!loading && data.byBrand.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Best brand by profit */}
             {data.byBrand[0] && (
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
@@ -379,6 +388,17 @@ export default function ProfitPage() {
                   <p className="font-bold text-slate-800">{formatNumber(data.freeInward.reduce((s, f) => s + f.bottles, 0))} bottles received</p>
                   <p className="text-sm text-amber-700 font-medium">≈ {formatINR(data.totals.compStock, 0)} potential value</p>
                   <p className="text-xs text-slate-500">Cost = ₹0 (pure profit when sold)</p>
+                </div>
+              </div>
+            )}
+            {/* Cost of complimentary stock given to customers */}
+            {data.totals.compStockGiven > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-start gap-3">
+                <Gift size={20} className="text-orange-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-0.5">Free Stock Given (Cost)</p>
+                  <p className="text-sm text-orange-700 font-medium">{formatINR(data.totals.compStockGiven, 0)}</p>
+                  <p className="text-xs text-slate-500">Complimentary gifts to customers · deducted from Net Profit</p>
                 </div>
               </div>
             )}

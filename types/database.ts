@@ -82,6 +82,7 @@ export interface StockMovement {
   loose_units: number
   total_bottles: number
   price_per_bottle: number | null
+  cost_per_bottle: number | null
   is_free_stock: boolean
   brand_id: string | null
   customer_id: string | null
