@@ -73,9 +73,9 @@ function AddExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose: (
     <Modal open={open} title="Add Expense" onClose={onClose} size="md">
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Category" required>
+          <FormField label="Category" required hint="Diesel expenses are added automatically from Vehicle Logs">
             <Select value={form.category} onChange={set('category')}>
-              {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {Object.entries(CATEGORY_LABELS).filter(([k]) => k !== 'diesel').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </FormField>
           <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
