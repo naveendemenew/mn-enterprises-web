@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ArrowLeft, Plus } from 'lucide-react'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
@@ -100,6 +101,7 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, invoices }: {
             <option value="cash">Cash</option>
             <option value="upi">UPI</option>
             <option value="bank">Bank Transfer</option>
+            <option value="card">Card</option>
           </Select>
         </FormField>
 
@@ -116,8 +118,10 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, invoices }: {
   )
 }
 
-export default function CustomerDetailPage({ params }: { params: { id: string } }) {
+export default function CustomerDetailPage() {
   const supabase = createClient()
+  const params = useParams<{ id: string }>()
+  const customerId = params.id
   const [customer, setCustomer] = useState<any>(null)
   const [invoices, setInvoices] = useState<any[]>([])
   const [payments, setPayments] = useState<any[]>([])
@@ -127,21 +131,34 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
   const load = useCallback(async () => {
     setLoading(true)
     const [custRes, invRes, payRes] = await Promise.all([
-      supabase.from('customers').select('*').eq('id', params.id).single(),
-      supabase.from('invoices').select('*').eq('customer_id', params.id).order('date', { ascending: false }),
-      supabase.from('payments').select('*').eq('customer_id', params.id).order('date', { ascending: false }),
+      supabase.from('customers').select('*').eq('id', customerId).single(),
+      supabase.from('invoices').select('*').eq('customer_id', customerId).order('date', { ascending: false }),
+      supabase.from('payments').select('*').eq('customer_id', customerId).order('date', { ascending: false }),
     ])
     setCustomer(custRes.data)
     setInvoices(invRes.data ?? [])
     setPayments(payRes.data ?? [])
     setLoading(false)
-  }, [params.id])
+  }, [customerId])
 
   useEffect(() => { load() }, [load])
 
   const totalInvoiced = invoices.reduce((s, i) => s + Number(i.total_amount), 0)
   const totalPaid = invoices.reduce((s, i) => s + Number(i.amount_paid), 0)
   const totalDue = totalInvoiced - totalPaid
+
+  // Combined chronological ledger with running balance (debit = invoiced, credit = paid)
+  const ledger = [
+    ...invoices.map(i => ({ date: i.date, created_at: i.created_at, type: 'Invoice', description: 'Sale invoice', debit: Number(i.total_amount), credit: 0 })),
+    ...payments.map(p => ({ date: p.date, created_at: p.created_at, type: 'Payment', description: `Payment received (${p.mode})${p.notes ? ' — ' + p.notes : ''}`, debit: 0, credit: Number(p.amount) })),
+  ]
+    .sort((a, b) => a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date))
+    .reduce<{ date: string; type: string; description: string; debit: number; credit: number; balance: number }[]>((acc, entry) => {
+      const prevBalance = acc.length > 0 ? acc[acc.length - 1].balance : 0
+      acc.push({ ...entry, balance: prevBalance + entry.debit - entry.credit })
+      return acc
+    }, [])
+    .reverse()
 
   const statusBadge = (status: string) => {
     const cls = { paid: 'bg-green-100 text-green-700', partial: 'bg-amber-100 text-amber-700', unpaid: 'bg-red-100 text-red-700' }
@@ -179,6 +196,39 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
         <div className="text-center">
           <p className="text-xs text-slate-500 uppercase tracking-wide">Outstanding</p>
           <p className={`text-lg font-semibold ${totalDue > 0 ? 'text-red-600' : 'text-slate-600'}`}>{formatINR(totalDue, 2)}</p>
+        </div>
+      </div>
+
+      {/* Ledger */}
+      <div className="p-6 pb-0">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">Account Ledger</h2>
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                {['Date', 'Type', 'Description', 'Invoiced (Dr)', 'Paid (Cr)', 'Balance Due'].map(h => (
+                  <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-slate-400">No transactions yet</td></tr>}
+              {ledger.map((l, i) => (
+                <tr key={i} className="border-b border-slate-100">
+                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDate(l.date)}</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${l.type === 'Invoice' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                      {l.type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-slate-500">{l.description}</td>
+                  <td className="px-3 py-2 text-red-600">{l.debit > 0 ? formatINR(l.debit, 2) : '—'}</td>
+                  <td className="px-3 py-2 text-green-600">{l.credit > 0 ? formatINR(l.credit, 2) : '—'}</td>
+                  <td className="px-3 py-2 font-semibold text-slate-800">{formatINR(l.balance, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -239,7 +289,7 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
         </div>
       </div>
 
-      <RecordPaymentModal open={payOpen} onClose={() => setPayOpen(false)} onSaved={load} customerId={params.id} invoices={invoices} />
+      <RecordPaymentModal open={payOpen} onClose={() => setPayOpen(false)} onSaved={load} customerId={customerId} invoices={invoices} />
     </div>
   )
 }

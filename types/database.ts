@@ -4,7 +4,7 @@
 export type MovementType = 'inward' | 'outward' | 'damage' | 'adjustment'
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid'
 export type PaymentType = 'received_from_customer' | 'paid_to_brand'
-export type PaymentMode = 'cash' | 'upi' | 'bank'
+export type PaymentMode = 'cash' | 'upi' | 'bank' | 'card'
 export type ExpenseCategory = 'diesel' | 'driver_payment' | 'maintenance' | 'misc'
 export type IndentStatus = 'pending' | 'received'
 

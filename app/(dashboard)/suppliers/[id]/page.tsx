@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ArrowLeft, Plus } from 'lucide-react'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
@@ -100,6 +101,7 @@ function RecordPaymentModal({ open, onClose, onSaved, brandId, bills }: {
             <option value="cash">Cash</option>
             <option value="upi">UPI</option>
             <option value="bank">Bank Transfer</option>
+            <option value="card">Card</option>
           </Select>
         </FormField>
 
@@ -116,8 +118,10 @@ function RecordPaymentModal({ open, onClose, onSaved, brandId, bills }: {
   )
 }
 
-export default function SupplierDetailPage({ params }: { params: { id: string } }) {
+export default function SupplierDetailPage() {
   const supabase = createClient()
+  const params = useParams<{ id: string }>()
+  const brandId = params.id
   const [brand, setBrand] = useState<any>(null)
   const [bills, setBills] = useState<any[]>([])
   const [payments, setPayments] = useState<any[]>([])
@@ -127,15 +131,15 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   const load = useCallback(async () => {
     setLoading(true)
     const [brandRes, billRes, payRes] = await Promise.all([
-      supabase.from('brands').select('*, categories(name)').eq('id', params.id).single(),
-      supabase.from('purchase_bills').select('*').eq('brand_id', params.id).order('date', { ascending: false }),
-      supabase.from('payments').select('*').eq('brand_id', params.id).order('date', { ascending: false }),
+      supabase.from('brands').select('*, categories(name)').eq('id', brandId).single(),
+      supabase.from('purchase_bills').select('*').eq('brand_id', brandId).order('date', { ascending: false }),
+      supabase.from('payments').select('*').eq('brand_id', brandId).order('date', { ascending: false }),
     ])
     setBrand(brandRes.data)
     setBills(billRes.data ?? [])
     setPayments(payRes.data ?? [])
     setLoading(false)
-  }, [params.id])
+  }, [brandId])
 
   useEffect(() => { load() }, [load])
 
@@ -237,7 +241,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
         </div>
       </div>
 
-      <RecordPaymentModal open={payOpen} onClose={() => setPayOpen(false)} onSaved={load} brandId={params.id} bills={bills} />
+      <RecordPaymentModal open={payOpen} onClose={() => setPayOpen(false)} onSaved={load} brandId={brandId} bills={bills} />
     </div>
   )
 }
