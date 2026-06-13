@@ -147,6 +147,19 @@ export default function SupplierDetailPage() {
   const totalPaid = bills.reduce((s, b) => s + Number(b.amount_paid), 0)
   const totalDue = totalBilled - totalPaid
 
+  // Combined chronological ledger with running payable balance (debit = billed, credit = paid)
+  const ledger = [
+    ...bills.map(b => ({ date: b.date, created_at: b.created_at, type: 'Bill', description: b.invoice_number ? `Purchase bill #${b.invoice_number}` : 'Purchase bill', debit: Number(b.total_amount), credit: 0 })),
+    ...payments.map(p => ({ date: p.date, created_at: p.created_at, type: 'Payment', description: `Payment made (${p.mode})${p.notes ? ' — ' + p.notes : ''}`, debit: 0, credit: Number(p.amount) })),
+  ]
+    .sort((a, b) => a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date))
+    .reduce<{ date: string; type: string; description: string; debit: number; credit: number; balance: number }[]>((acc, entry) => {
+      const prevBalance = acc.length > 0 ? acc[acc.length - 1].balance : 0
+      acc.push({ ...entry, balance: prevBalance + entry.debit - entry.credit })
+      return acc
+    }, [])
+    .reverse()
+
   const statusBadge = (status: string) => {
     const cls = { paid: 'bg-green-100 text-green-700', partial: 'bg-amber-100 text-amber-700', unpaid: 'bg-red-100 text-red-700' }
     return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${cls[status as keyof typeof cls]}`}>{status}</span>
@@ -182,6 +195,39 @@ export default function SupplierDetailPage() {
         <div className="text-center">
           <p className="text-xs text-slate-500 uppercase tracking-wide">Payable</p>
           <p className={`text-lg font-semibold ${totalDue > 0 ? 'text-red-600' : 'text-slate-600'}`}>{formatINR(totalDue, 2)}</p>
+        </div>
+      </div>
+
+      {/* Ledger */}
+      <div className="p-6 pb-0">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">Account Ledger</h2>
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                {['Date', 'Type', 'Description', 'Billed (Dr)', 'Paid (Cr)', 'Balance Payable'].map(h => (
+                  <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-slate-400">No transactions yet</td></tr>}
+              {ledger.map((l, i) => (
+                <tr key={i} className="border-b border-slate-100">
+                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDate(l.date)}</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${l.type === 'Bill' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                      {l.type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-slate-500">{l.description}</td>
+                  <td className="px-3 py-2 text-red-600">{l.debit > 0 ? formatINR(l.debit, 2) : '—'}</td>
+                  <td className="px-3 py-2 text-green-600">{l.credit > 0 ? formatINR(l.credit, 2) : '—'}</td>
+                  <td className="px-3 py-2 font-semibold text-slate-800">{formatINR(l.balance, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

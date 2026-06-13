@@ -96,6 +96,7 @@ function PayBrandModal({ open, onClose, onSaved, brandId, brandName }: {
             <option value="cash">Cash</option>
             <option value="upi">UPI</option>
             <option value="bank">Bank Transfer</option>
+            <option value="card">Card</option>
           </Select>
         </FormField>
         <FormField label="Notes">
