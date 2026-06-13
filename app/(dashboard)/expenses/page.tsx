@@ -7,7 +7,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
-import { formatINR, formatDate, todayISO } from '@/lib/formatters'
+import { formatINR, formatDate, todayISO, minBackdateISO } from '@/lib/formatters'
 import type { ExpenseCategory, Vehicle, Driver } from '@/types/database'
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
@@ -51,6 +51,9 @@ function AddExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose: (
   const save = async () => {
     const e: Record<string, string> = {}
     if (!form.amount || Number(form.amount) <= 0) e.amount = 'Enter a valid amount'
+    if (!form.date) e.date = 'Required'
+    else if (form.date < minBackdateISO()) e.date = 'Date cannot be more than 15 days in the past'
+    else if (form.date > todayISO()) e.date = 'Date cannot be in the future'
     if (Object.keys(e).length) { setErrors(e); return }
     setSaving(true)
     await supabase.from('expenses').insert({
@@ -75,8 +78,8 @@ function AddExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose: (
               {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </FormField>
-          <FormField label="Date" required>
-            <Input type="date" value={form.date} onChange={set('date')} />
+          <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
+            <Input type="date" value={form.date} onChange={set('date')} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
           </FormField>
         </div>
         <FormField label="Amount (₹)" required error={errors.amount}>

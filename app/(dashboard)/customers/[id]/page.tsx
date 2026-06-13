@@ -1,11 +1,120 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import PageHeader from '@/components/ui/PageHeader'
-import { formatINR, formatDate } from '@/lib/formatters'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
+import { formatINR, formatDate, todayISO, minBackdateISO } from '@/lib/formatters'
+import type { PaymentMode } from '@/types/database'
+
+// ─── Record Payment Modal ─────────────────────────────────────────────────────
+
+function RecordPaymentModal({ open, onClose, onSaved, customerId, invoices }: {
+  open: boolean
+  onClose: () => void
+  onSaved: () => void
+  customerId: string
+  invoices: any[]
+}) {
+  const supabase = createClient()
+  const [form, setForm] = useState({ invoice_id: '', amount: '', date: todayISO(), mode: 'cash' as PaymentMode, notes: '' })
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  const dueInvoices = invoices.filter(i => Number(i.total_amount) - Number(i.amount_paid) > 0)
+
+  useEffect(() => {
+    if (open) {
+      setForm({ invoice_id: '', amount: '', date: todayISO(), mode: 'cash', notes: '' })
+      setErrors({})
+    }
+  }, [open])
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const save = async () => {
+    const e: Record<string, string> = {}
+    if (!form.amount || Number(form.amount) <= 0) e.amount = 'Enter a valid amount'
+    if (!form.date) e.date = 'Required'
+    else if (form.date < minBackdateISO()) e.date = 'Date cannot be more than 15 days in the past'
+    else if (form.date > todayISO()) e.date = 'Date cannot be in the future'
+    if (Object.keys(e).length) { setErrors(e); return }
+    setSaving(true)
+
+    const amount = Number(form.amount)
+
+    await supabase.from('payments').insert({
+      type: 'received_from_customer',
+      customer_id: customerId,
+      invoice_id: form.invoice_id || null,
+      amount,
+      date: form.date,
+      mode: form.mode,
+      notes: form.notes.trim() || null,
+    })
+
+    if (form.invoice_id) {
+      const inv = invoices.find(i => i.id === form.invoice_id)
+      if (inv) {
+        const newPaid = Number(inv.amount_paid) + amount
+        const status = newPaid >= Number(inv.total_amount) ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+        await supabase.from('invoices').update({ amount_paid: newPaid, payment_status: status }).eq('id', inv.id)
+      }
+    }
+
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <Modal open={open} title="Record Payment" onClose={onClose} size="md">
+      <div className="space-y-4">
+        <FormField label="Against Invoice" hint="Optional — leave blank for a general / on-account payment">
+          <Select value={form.invoice_id} onChange={set('invoice_id')}>
+            <option value="">General / on account</option>
+            {dueInvoices.map(i => (
+              <option key={i.id} value={i.id}>
+                {formatDate(i.date)} (Due {formatINR(Number(i.total_amount) - Number(i.amount_paid), 2)})
+              </option>
+            ))}
+          </Select>
+        </FormField>
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Amount (₹)" required error={errors.amount}>
+            <Input type="number" min="0" step="0.01" value={form.amount} onChange={set('amount')} placeholder="0.00" error={!!errors.amount} autoFocus />
+          </FormField>
+          <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
+            <Input type="date" value={form.date} onChange={set('date')} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
+          </FormField>
+        </div>
+
+        <FormField label="Mode">
+          <Select value={form.mode} onChange={set('mode')}>
+            <option value="cash">Cash</option>
+            <option value="upi">UPI</option>
+            <option value="bank">Bank Transfer</option>
+          </Select>
+        </FormField>
+
+        <FormField label="Notes">
+          <Textarea value={form.notes} onChange={set('notes')} rows={2} placeholder="Optional" />
+        </FormField>
+
+        <div className="flex gap-3 justify-end pt-2 border-t border-slate-100">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} loading={saving}>Save Payment</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
 export default function CustomerDetailPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
@@ -13,6 +122,7 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
   const [invoices, setInvoices] = useState<any[]>([])
   const [payments, setPayments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [payOpen, setPayOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -47,9 +157,12 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
         title={customer.name}
         subtitle={`${customer.phone ?? ''} — ${customer.address ?? ''} — Credit: ${customer.credit_period_days} days`}
         actions={
-          <Link href="/customers" className="flex items-center gap-1 text-sm text-blue-600 hover:underline">
-            <ArrowLeft size={14} />All Customers
-          </Link>
+          <div className="flex items-center gap-3">
+            <Button onClick={() => setPayOpen(true)} size="sm"><Plus size={14} />Record Payment</Button>
+            <Link href="/customers" className="flex items-center gap-1 text-sm text-blue-600 hover:underline">
+              <ArrowLeft size={14} />All Customers
+            </Link>
+          </div>
         }
       />
 
@@ -125,6 +238,8 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
           </div>
         </div>
       </div>
+
+      <RecordPaymentModal open={payOpen} onClose={() => setPayOpen(false)} onSaved={load} customerId={params.id} invoices={invoices} />
     </div>
   )
 }

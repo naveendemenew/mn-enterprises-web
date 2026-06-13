@@ -7,7 +7,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
-import { formatINR, formatDate, formatNumber, todayISO } from '@/lib/formatters'
+import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO } from '@/lib/formatters'
 import type { Brand, Sku, PurchaseBill, StockMovement } from '@/types/database'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -112,6 +112,8 @@ function AddPurchaseModal({
     if (!form.brand_id) e.brand_id = 'Required'
     if (!form.sku_id) e.sku_id = 'Required'
     if (!form.date) e.date = 'Required'
+    else if (form.date < minBackdateISO()) e.date = 'Date cannot be more than 15 days in the past'
+    else if (form.date > todayISO()) e.date = 'Date cannot be in the future'
     if (!form.cases && !form.loose_units) e.cases = 'Enter cases or loose units'
     if (!form.is_free_stock && !form.price_per_bottle) e.price_per_bottle = 'Required'
     setErrors(e)
@@ -176,8 +178,8 @@ function AddPurchaseModal({
 
         {/* Date + Invoice */}
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Date" required error={errors.date}>
-            <Input type="date" value={form.date} onChange={set('date')} error={!!errors.date} />
+          <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
+            <Input type="date" value={form.date} onChange={set('date')} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
           </FormField>
           <FormField label="Supplier Invoice #" hint="For purchase bill tracking">
             <Input value={form.purchase_bill_invoice} onChange={set('purchase_bill_invoice')} placeholder="e.g. INV-2024-001" />

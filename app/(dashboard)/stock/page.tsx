@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, AlertTriangle, History } from 'lucide-react'
+import { Plus, AlertTriangle, History, PackagePlus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
@@ -9,6 +9,117 @@ import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
 import { formatINR, formatDate, formatNumber, todayISO } from '@/lib/formatters'
 import type { Sku, CurrentStockRow, StockMovement } from '@/types/database'
+
+// ─── Opening Stock Modal ──────────────────────────────────────────────────────
+// One-time initial stock setup per SKU — records the starting inventory and its
+// cost basis as an inward movement with no supplier/brand attached.
+
+function OpeningStockModal({ open, onClose, onSaved, skus }: {
+  open: boolean
+  onClose: () => void
+  onSaved: () => void
+  skus: Sku[]
+}) {
+  const supabase = createClient()
+  const [form, setForm] = useState({
+    sku_id: '', date: todayISO(), cases: '', loose_units: '0', price_per_bottle: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (open) {
+      setForm({ sku_id: '', date: todayISO(), cases: '', loose_units: '0', price_per_bottle: '' })
+      setErrors({})
+    }
+  }, [open])
+
+  const selectedSku = skus.find(s => s.id === form.sku_id)
+  const casesNum = Number(form.cases) || 0
+  const looseNum = Number(form.loose_units) || 0
+  const unitsPerCase = selectedSku?.units_per_case ?? 1
+  const totalBottles = casesNum * unitsPerCase + looseNum
+
+  useEffect(() => {
+    if (!form.sku_id) return
+    const sku = skus.find(s => s.id === form.sku_id)
+    if (sku?.default_purchase_price_per_bottle != null) {
+      setForm(f => ({ ...f, price_per_bottle: String(sku.default_purchase_price_per_bottle) }))
+    }
+  }, [form.sku_id])
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const save = async () => {
+    const e: Record<string, string> = {}
+    if (!form.sku_id) e.sku_id = 'Required'
+    if (!form.date) e.date = 'Required'
+    if (!form.cases && !form.loose_units) e.cases = 'Enter opening quantity'
+    if (!form.price_per_bottle) e.price_per_bottle = 'Required for stock valuation'
+    if (Object.keys(e).length) { setErrors(e); return }
+    setSaving(true)
+
+    await supabase.from('stock_movements').insert({
+      sku_id: form.sku_id,
+      movement_type: 'inward',
+      date: form.date,
+      cases: casesNum,
+      loose_units: looseNum,
+      total_bottles: totalBottles,
+      price_per_bottle: Number(form.price_per_bottle),
+      is_free_stock: false,
+      notes: 'Opening stock',
+    })
+
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <Modal open={open} title="Opening Stock Entry" onClose={onClose} size="md">
+      <div className="space-y-4">
+        <p className="text-sm text-slate-500">
+          One-time entry to record the stock on hand and its cost when you start using this system for an SKU.
+        </p>
+
+        <FormField label="SKU / Product" required error={errors.sku_id}>
+          <Select value={form.sku_id} onChange={set('sku_id')} error={!!errors.sku_id}>
+            <option value="">Select product</option>
+            {skus.map(s => <option key={s.id} value={s.id}>{s.name} {(s as any).brands?.name ? `— ${(s as any).brands.name}` : ''}</option>)}
+          </Select>
+        </FormField>
+
+        <FormField label="As of Date" required>
+          <Input type="date" value={form.date} onChange={set('date')} max={todayISO()} />
+        </FormField>
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Cases" error={errors.cases}>
+            <Input type="number" min="0" value={form.cases} onChange={set('cases')} placeholder="0" error={!!errors.cases} />
+          </FormField>
+          <FormField label="Loose Units">
+            <Input type="number" min="0" value={form.loose_units} onChange={set('loose_units')} placeholder="0" />
+          </FormField>
+        </div>
+
+        {totalBottles > 0 && selectedSku && (
+          <p className="text-sm text-slate-600">= <strong>{formatNumber(totalBottles)} bottles</strong></p>
+        )}
+
+        <FormField label="Cost per Bottle (₹)" required error={errors.price_per_bottle} hint="Used to value this opening stock">
+          <Input type="number" min="0" step="0.01" value={form.price_per_bottle} onChange={set('price_per_bottle')} placeholder="0.00" error={!!errors.price_per_bottle} />
+        </FormField>
+
+        <div className="flex gap-3 justify-end pt-2 border-t border-slate-100">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} loading={saving}>Save Opening Stock</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
 // ─── Adjustment Modal ─────────────────────────────────────────────────────────
 
@@ -213,6 +324,7 @@ export default function StockPage() {
   const [skus, setSkus] = useState<Sku[]>([])
   const [loading, setLoading] = useState(true)
   const [adjOpen, setAdjOpen] = useState(false)
+  const [openingOpen, setOpeningOpen] = useState(false)
   const [histSku, setHistSku] = useState<{ id: string; name: string } | null>(null)
 
   const load = useCallback(async () => {
@@ -238,9 +350,14 @@ export default function StockPage() {
         title="Stock Register"
         subtitle="Current inventory levels and movement history"
         actions={
-          <Button onClick={() => setAdjOpen(true)} size="sm" variant="secondary">
-            <Plus size={14} />Adjustment / Damage
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setOpeningOpen(true)} size="sm" variant="secondary">
+              <PackagePlus size={14} />Opening Stock
+            </Button>
+            <Button onClick={() => setAdjOpen(true)} size="sm" variant="secondary">
+              <Plus size={14} />Adjustment / Damage
+            </Button>
+          </div>
         }
       />
 
@@ -323,6 +440,7 @@ export default function StockPage() {
         </div>
       </div>
 
+      <OpeningStockModal open={openingOpen} onClose={() => setOpeningOpen(false)} onSaved={load} skus={skus} />
       <AdjustmentModal open={adjOpen} onClose={() => setAdjOpen(false)} onSaved={load} skus={skus} />
       <MovementHistoryModal
         open={!!histSku}

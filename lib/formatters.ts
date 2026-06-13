@@ -33,6 +33,13 @@ export function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** Earliest date allowed for backdated entries (default 15 days before today). */
+export function minBackdateISO(days = 15): string {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  return d.toISOString().slice(0, 10)
+}
+
 /** e.g. 5 cases + 3 loose → "5c 3L"  or just "5c" / "3L" */
 export function formatStock(cases: number, loose: number, unitsPerCase?: number): string {
   const parts: string[] = []
