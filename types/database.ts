@@ -33,6 +33,7 @@ export interface Sku {
   units_per_case: number
   default_purchase_price_per_bottle: number | null
   default_selling_price_per_bottle: number | null
+  mrp_per_bottle: number | null
   reorder_level_bottles: number
   created_at: string
   // joined

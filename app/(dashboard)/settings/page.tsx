@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
+import { formatINR } from '@/lib/formatters'
 import type { Category, Brand, Sku, Customer, Vehicle, Driver } from '@/types/database'
 
 type Tab = 'categories' | 'brands' | 'skus' | 'customers' | 'vehicles' | 'drivers'
@@ -287,7 +288,7 @@ function SkusTab() {
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<{ type: 'add' | 'edit' | 'delete'; item?: Sku } | null>(null)
-  const [form, setForm] = useState({ brand_id: '', name: '', units_per_case: '1', default_purchase_price_per_bottle: '', default_selling_price_per_bottle: '', reorder_level_bottles: '0' })
+  const [form, setForm] = useState({ brand_id: '', name: '', units_per_case: '1', default_purchase_price_per_bottle: '', default_selling_price_per_bottle: '', mrp_per_bottle: '', reorder_level_bottles: '0' })
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -304,7 +305,7 @@ function SkusTab() {
 
   useEffect(() => { load() }, [load])
 
-  const blank = { brand_id: '', name: '', units_per_case: '1', default_purchase_price_per_bottle: '', default_selling_price_per_bottle: '', reorder_level_bottles: '0' }
+  const blank = { brand_id: '', name: '', units_per_case: '1', default_purchase_price_per_bottle: '', default_selling_price_per_bottle: '', mrp_per_bottle: '', reorder_level_bottles: '0' }
   const openAdd = () => { setForm(blank); setErrors({}); setModal({ type: 'add' }) }
   const openEdit = (item: Sku) => {
     setForm({
@@ -313,6 +314,7 @@ function SkusTab() {
       units_per_case: String(item.units_per_case),
       default_purchase_price_per_bottle: item.default_purchase_price_per_bottle != null ? String(item.default_purchase_price_per_bottle) : '',
       default_selling_price_per_bottle: item.default_selling_price_per_bottle != null ? String(item.default_selling_price_per_bottle) : '',
+      mrp_per_bottle: item.mrp_per_bottle != null ? String(item.mrp_per_bottle) : '',
       reorder_level_bottles: String(item.reorder_level_bottles),
     })
     setErrors({}); setModal({ type: 'edit', item })
@@ -333,6 +335,7 @@ function SkusTab() {
       units_per_case: Number(form.units_per_case),
       default_purchase_price_per_bottle: form.default_purchase_price_per_bottle ? Number(form.default_purchase_price_per_bottle) : null,
       default_selling_price_per_bottle: form.default_selling_price_per_bottle ? Number(form.default_selling_price_per_bottle) : null,
+      mrp_per_bottle: form.mrp_per_bottle ? Number(form.mrp_per_bottle) : null,
       reorder_level_bottles: Number(form.reorder_level_bottles) || 0,
     }
     if (modal?.type === 'add') await supabase.from('skus').insert(payload)
@@ -381,17 +384,81 @@ function SkusTab() {
               </Select>
             </FormField>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <FormField label="Units per Case" required error={errors.units_per_case} hint="Bottles per case (1 for jars)">
-              <Input type="number" min="1" value={form.units_per_case} onChange={f('units_per_case')} error={!!errors.units_per_case} />
-            </FormField>
-            <FormField label="Default Buy Price (₹/bottle)">
-              <Input type="number" min="0" step="0.01" value={form.default_purchase_price_per_bottle} onChange={f('default_purchase_price_per_bottle')} placeholder="0.00" />
-            </FormField>
-            <FormField label="Default Sell Price (₹/bottle)">
-              <Input type="number" min="0" step="0.01" value={form.default_selling_price_per_bottle} onChange={f('default_selling_price_per_bottle')} placeholder="0.00" />
-            </FormField>
-          </div>
+          <FormField label="Units per Case" required error={errors.units_per_case} hint="Bottles per case (1 for jars)">
+            <Input type="number" min="1" value={form.units_per_case} onChange={f('units_per_case')} error={!!errors.units_per_case} />
+          </FormField>
+
+          {/* Pricing: bottle price + live case price for Buy / Sell / MRP */}
+          {(() => {
+            const unitsPerCase = Number(form.units_per_case) || 1
+            const buy = Number(form.default_purchase_price_per_bottle) || 0
+            const sell = Number(form.default_selling_price_per_bottle) || 0
+            const mrp = Number(form.mrp_per_bottle) || 0
+            const marginPerBottle = sell - buy
+            const marginPerCase = marginPerBottle * unitsPerCase
+            const marginPct = buy > 0 ? (marginPerBottle / buy) * 100 : null
+
+            const rows: { key: keyof typeof form; label: string; value: number }[] = [
+              { key: 'default_purchase_price_per_bottle', label: 'Buy Price', value: buy },
+              { key: 'default_selling_price_per_bottle', label: 'Sell Price', value: sell },
+              { key: 'mrp_per_bottle', label: 'MRP', value: mrp },
+            ]
+
+            return (
+              <div className="space-y-3">
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Price</th>
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">₹ / Bottle</th>
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">₹ / Case ({unitsPerCase})</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(r => (
+                        <tr key={r.key} className="border-b border-slate-50 last:border-b-0">
+                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.label}</td>
+                          <td className="px-3 py-2">
+                            <Input type="number" min="0" step="0.01" value={form[r.key]} onChange={f(r.key)} placeholder="0.00" />
+                          </td>
+                          <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                            {r.value > 0 ? formatINR(r.value * unitsPerCase, 2) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {(buy > 0 || sell > 0) && (
+                  <div className="bg-slate-50 rounded-lg p-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                    <span className="text-slate-500">
+                      Margin/bottle:{' '}
+                      <span className={`font-semibold ${marginPerBottle >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {formatINR(marginPerBottle, 2)}
+                      </span>
+                    </span>
+                    <span className="text-slate-500">
+                      Margin/case:{' '}
+                      <span className={`font-semibold ${marginPerCase >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {formatINR(marginPerCase, 2)}
+                      </span>
+                    </span>
+                    {marginPct !== null && (
+                      <span className="text-slate-500">
+                        Margin %:{' '}
+                        <span className={`font-semibold ${marginPct >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {marginPct.toFixed(1)}%
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
           <FormField label="Reorder Level (bottles)" hint="Show low-stock alert when stock drops below this">
             <Input type="number" min="0" value={form.reorder_level_bottles} onChange={f('reorder_level_bottles')} />
           </FormField>
