@@ -70,6 +70,20 @@ function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
   )
 }
 
+function MobileCard({ onEdit, onDelete, children }: { onEdit: () => void; onDelete: () => void; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">{children}</div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={onEdit} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Pencil size={16} /></button>
+          <button onClick={onDelete} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={16} /></button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DeleteConfirm({ name, onConfirm, onCancel, loading }: {
   name: string; onConfirm: () => void; onCancel: () => void; loading: boolean
 }) {
@@ -138,14 +152,26 @@ function CategoriesTab() {
       <div className="flex justify-end">
         <Button onClick={openAdd} size="sm"><Plus size={14} />Add Category</Button>
       </div>
-      <TableShell cols={['Name']} empty={!loading && items.length === 0}>
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {!loading && items.length === 0 && <p className="text-center py-12 text-slate-400">No items yet. Tap + Add to get started.</p>}
         {items.map(item => (
-          <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
-            <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-            <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
-          </tr>
+          <MobileCard key={item.id} onEdit={() => openEdit(item)} onDelete={() => openDelete(item)}>
+            <p className="font-medium text-slate-800">{item.name}</p>
+          </MobileCard>
         ))}
-      </TableShell>
+      </div>
+
+      <div className="hidden md:block">
+        <TableShell cols={['Name']} empty={!loading && items.length === 0}>
+          {items.map(item => (
+            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
+              <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+              <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
+            </tr>
+          ))}
+        </TableShell>
+      </div>
 
       <Modal open={modal?.type === 'add' || modal?.type === 'edit'} title={modal?.type === 'add' ? 'Add Category' : 'Edit Category'} onClose={closeModal} size="sm">
         <div className="space-y-4">
@@ -226,25 +252,42 @@ function BrandsTab() {
       <div className="flex justify-end">
         <Button onClick={openAdd} size="sm"><Plus size={14} />Add Brand</Button>
       </div>
-      <TableShell cols={['Name', 'Category', 'Contact', 'Payment Terms']} empty={!loading && items.length === 0}>
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {!loading && items.length === 0 && <p className="text-center py-12 text-slate-400">No items yet. Tap + Add to get started.</p>}
         {items.map(item => (
-          <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
-            <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-            <td className="px-4 py-3 text-slate-600">{(item as any).categories?.name ?? '—'}</td>
-            <td className="px-4 py-3 text-slate-600">
-              {item.contact_name && <div>{item.contact_name}</div>}
-              {item.contact_phone && <div className="text-xs text-slate-400">{item.contact_phone}</div>}
-              {!item.contact_name && !item.contact_phone && '—'}
-            </td>
-            <td className="px-4 py-3 text-slate-600">{item.payment_terms ?? '—'}</td>
-            <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
-          </tr>
+          <MobileCard key={item.id} onEdit={() => openEdit(item)} onDelete={() => openDelete(item)}>
+            <p className="font-medium text-slate-800">{item.name}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{(item as any).categories?.name ?? '—'}</p>
+            {(item.contact_name || item.contact_phone) && (
+              <p className="text-xs text-slate-400 mt-0.5">{[item.contact_name, item.contact_phone].filter(Boolean).join(' · ')}</p>
+            )}
+            {item.payment_terms && <p className="text-xs text-slate-400 mt-0.5">{item.payment_terms}</p>}
+          </MobileCard>
         ))}
-      </TableShell>
+      </div>
+
+      <div className="hidden md:block">
+        <TableShell cols={['Name', 'Category', 'Contact', 'Payment Terms']} empty={!loading && items.length === 0}>
+          {items.map(item => (
+            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
+              <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+              <td className="px-4 py-3 text-slate-600">{(item as any).categories?.name ?? '—'}</td>
+              <td className="px-4 py-3 text-slate-600">
+                {item.contact_name && <div>{item.contact_name}</div>}
+                {item.contact_phone && <div className="text-xs text-slate-400">{item.contact_phone}</div>}
+                {!item.contact_name && !item.contact_phone && '—'}
+              </td>
+              <td className="px-4 py-3 text-slate-600">{item.payment_terms ?? '—'}</td>
+              <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
+            </tr>
+          ))}
+        </TableShell>
+      </div>
 
       <Modal open={modal?.type === 'add' || modal?.type === 'edit'} title={modal?.type === 'add' ? 'Add Brand' : 'Edit Brand'} onClose={closeModal}>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="Brand Name" required error={errors.name}>
               <Input value={form.name} onChange={f('name')} placeholder="e.g. Bisleri" error={!!errors.name} autoFocus />
             </FormField>
@@ -255,7 +298,7 @@ function BrandsTab() {
               </Select>
             </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="Contact Name">
               <Input value={form.contact_name} onChange={f('contact_name')} placeholder="Contact person" />
             </FormField>
@@ -357,23 +400,41 @@ function SkusTab() {
       <div className="flex justify-end">
         <Button onClick={openAdd} size="sm"><Plus size={14} />Add SKU</Button>
       </div>
-      <TableShell cols={['Name', 'Brand', 'Units/Case', 'Buy Price', 'Sell Price', 'Reorder']} empty={!loading && items.length === 0}>
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {!loading && items.length === 0 && <p className="text-center py-12 text-slate-400">No items yet. Tap + Add to get started.</p>}
         {items.map(item => (
-          <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
-            <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-            <td className="px-4 py-3 text-slate-600">{(item as any).brands?.name ?? '—'}</td>
-            <td className="px-4 py-3 text-slate-600">{item.units_per_case}</td>
-            <td className="px-4 py-3 text-slate-600">{item.default_purchase_price_per_bottle != null ? `₹${item.default_purchase_price_per_bottle}` : '—'}</td>
-            <td className="px-4 py-3 text-slate-600">{item.default_selling_price_per_bottle != null ? `₹${item.default_selling_price_per_bottle}` : '—'}</td>
-            <td className="px-4 py-3 text-slate-600">{item.reorder_level_bottles} btl</td>
-            <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
-          </tr>
+          <MobileCard key={item.id} onEdit={() => openEdit(item)} onDelete={() => openDelete(item)}>
+            <p className="font-medium text-slate-800">{item.name}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{(item as any).brands?.name ?? '—'} · {item.units_per_case}/case</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Buy {item.default_purchase_price_per_bottle != null ? `₹${item.default_purchase_price_per_bottle}` : '—'}
+              {' · '}Sell {item.default_selling_price_per_bottle != null ? `₹${item.default_selling_price_per_bottle}` : '—'}
+              {' · '}Reorder {item.reorder_level_bottles} btl
+            </p>
+          </MobileCard>
         ))}
-      </TableShell>
+      </div>
+
+      <div className="hidden md:block">
+        <TableShell cols={['Name', 'Brand', 'Units/Case', 'Buy Price', 'Sell Price', 'Reorder']} empty={!loading && items.length === 0}>
+          {items.map(item => (
+            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
+              <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+              <td className="px-4 py-3 text-slate-600">{(item as any).brands?.name ?? '—'}</td>
+              <td className="px-4 py-3 text-slate-600">{item.units_per_case}</td>
+              <td className="px-4 py-3 text-slate-600">{item.default_purchase_price_per_bottle != null ? `₹${item.default_purchase_price_per_bottle}` : '—'}</td>
+              <td className="px-4 py-3 text-slate-600">{item.default_selling_price_per_bottle != null ? `₹${item.default_selling_price_per_bottle}` : '—'}</td>
+              <td className="px-4 py-3 text-slate-600">{item.reorder_level_bottles} btl</td>
+              <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
+            </tr>
+          ))}
+        </TableShell>
+      </div>
 
       <Modal open={modal?.type === 'add' || modal?.type === 'edit'} title={modal?.type === 'add' ? 'Add SKU' : 'Edit SKU'} onClose={closeModal} size="lg">
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="SKU / Product Name" required error={errors.name}>
               <Input value={form.name} onChange={f('name')} placeholder="e.g. 500ml Bottle" error={!!errors.name} autoFocus />
             </FormField>
@@ -530,21 +591,35 @@ function CustomersTab() {
       <div className="flex justify-end">
         <Button onClick={openAdd} size="sm"><Plus size={14} />Add Customer</Button>
       </div>
-      <TableShell cols={['Name', 'Phone', 'Address', 'Credit Period']} empty={!loading && items.length === 0}>
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {!loading && items.length === 0 && <p className="text-center py-12 text-slate-400">No items yet. Tap + Add to get started.</p>}
         {items.map(item => (
-          <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
-            <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-            <td className="px-4 py-3 text-slate-600">{item.phone ?? '—'}</td>
-            <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{item.address ?? '—'}</td>
-            <td className="px-4 py-3 text-slate-600">{item.credit_period_days} days</td>
-            <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
-          </tr>
+          <MobileCard key={item.id} onEdit={() => openEdit(item)} onDelete={() => openDelete(item)}>
+            <p className="font-medium text-slate-800">{item.name}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{item.phone ?? '—'} · {item.credit_period_days} days credit</p>
+            {item.address && <p className="text-xs text-slate-400 mt-0.5 truncate">{item.address}</p>}
+          </MobileCard>
         ))}
-      </TableShell>
+      </div>
+
+      <div className="hidden md:block">
+        <TableShell cols={['Name', 'Phone', 'Address', 'Credit Period']} empty={!loading && items.length === 0}>
+          {items.map(item => (
+            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
+              <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+              <td className="px-4 py-3 text-slate-600">{item.phone ?? '—'}</td>
+              <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{item.address ?? '—'}</td>
+              <td className="px-4 py-3 text-slate-600">{item.credit_period_days} days</td>
+              <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
+            </tr>
+          ))}
+        </TableShell>
+      </div>
 
       <Modal open={modal?.type === 'add' || modal?.type === 'edit'} title={modal?.type === 'add' ? 'Add Customer' : 'Edit Customer'} onClose={closeModal}>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="Customer Name" required error={errors.name}>
               <Input value={form.name} onChange={f('name')} placeholder="e.g. Hotel Grand Palace" error={!!errors.name} autoFocus />
             </FormField>
@@ -622,15 +697,28 @@ function VehiclesTab() {
       <div className="flex justify-end">
         <Button onClick={openAdd} size="sm"><Plus size={14} />Add Vehicle</Button>
       </div>
-      <TableShell cols={['Name', 'Registration Number']} empty={!loading && items.length === 0}>
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {!loading && items.length === 0 && <p className="text-center py-12 text-slate-400">No items yet. Tap + Add to get started.</p>}
         {items.map(item => (
-          <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
-            <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-            <td className="px-4 py-3 text-slate-600">{item.registration_number ?? '—'}</td>
-            <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
-          </tr>
+          <MobileCard key={item.id} onEdit={() => openEdit(item)} onDelete={() => openDelete(item)}>
+            <p className="font-medium text-slate-800">{item.name}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{item.registration_number ?? '—'}</p>
+          </MobileCard>
         ))}
-      </TableShell>
+      </div>
+
+      <div className="hidden md:block">
+        <TableShell cols={['Name', 'Registration Number']} empty={!loading && items.length === 0}>
+          {items.map(item => (
+            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
+              <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+              <td className="px-4 py-3 text-slate-600">{item.registration_number ?? '—'}</td>
+              <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
+            </tr>
+          ))}
+        </TableShell>
+      </div>
 
       <Modal open={modal?.type === 'add' || modal?.type === 'edit'} title={modal?.type === 'add' ? 'Add Vehicle' : 'Edit Vehicle'} onClose={closeModal} size="sm">
         <div className="space-y-4">
@@ -704,15 +792,28 @@ function DriversTab() {
       <div className="flex justify-end">
         <Button onClick={openAdd} size="sm"><Plus size={14} />Add Driver</Button>
       </div>
-      <TableShell cols={['Name', 'Phone']} empty={!loading && items.length === 0}>
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {!loading && items.length === 0 && <p className="text-center py-12 text-slate-400">No items yet. Tap + Add to get started.</p>}
         {items.map(item => (
-          <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
-            <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-            <td className="px-4 py-3 text-slate-600">{item.phone ?? '—'}</td>
-            <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
-          </tr>
+          <MobileCard key={item.id} onEdit={() => openEdit(item)} onDelete={() => openDelete(item)}>
+            <p className="font-medium text-slate-800">{item.name}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{item.phone ?? '—'}</p>
+          </MobileCard>
         ))}
-      </TableShell>
+      </div>
+
+      <div className="hidden md:block">
+        <TableShell cols={['Name', 'Phone']} empty={!loading && items.length === 0}>
+          {items.map(item => (
+            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
+              <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+              <td className="px-4 py-3 text-slate-600">{item.phone ?? '—'}</td>
+              <RowActions onEdit={() => openEdit(item)} onDelete={() => openDelete(item)} />
+            </tr>
+          ))}
+        </TableShell>
+      </div>
 
       <Modal open={modal?.type === 'add' || modal?.type === 'edit'} title={modal?.type === 'add' ? 'Add Driver' : 'Edit Driver'} onClose={closeModal} size="sm">
         <div className="space-y-4">

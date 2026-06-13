@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
+import DateInput from '@/components/ui/DateInput'
 import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO } from '@/lib/formatters'
 import type { Brand, Sku, PurchaseBill, StockMovement } from '@/types/database'
 
@@ -161,7 +162,7 @@ function AddPurchaseModal({
     <Modal open={open} title="Record Purchase (Inward Stock)" onClose={onClose} size="lg">
       <div className="space-y-4">
         {/* Brand + SKU */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Brand / Supplier" required error={errors.brand_id}>
             <Select value={form.brand_id} onChange={set('brand_id')} error={!!errors.brand_id}>
               <option value="">Select brand</option>
@@ -177,9 +178,9 @@ function AddPurchaseModal({
         </div>
 
         {/* Date + Invoice */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
-            <Input type="date" value={form.date} onChange={set('date')} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
+            <DateInput value={form.date} onChange={iso => setForm(f => ({ ...f, date: iso }))} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
           </FormField>
           <FormField label="Supplier Invoice #" hint="For purchase bill tracking">
             <Input value={form.purchase_bill_invoice} onChange={set('purchase_bill_invoice')} placeholder="e.g. INV-2024-001" />
@@ -187,7 +188,7 @@ function AddPurchaseModal({
         </div>
 
         {/* Quantity */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <FormField label="Cases" error={errors.cases}>
             <Input type="number" min="0" value={form.cases} onChange={set('cases')} placeholder="0" error={!!errors.cases} />
           </FormField>
@@ -216,7 +217,7 @@ function AddPurchaseModal({
 
         {/* Price */}
         {!form.is_free_stock && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="Price per Bottle (₹)" required error={errors.price_per_bottle}>
               <Input type="number" min="0" step="0.01" value={form.price_per_bottle} onChange={set('price_per_bottle')} placeholder="0.00" error={!!errors.price_per_bottle} />
             </FormField>
@@ -253,6 +254,10 @@ export default function PurchasesPage() {
   const [rows, setRows] = useState<PurchaseRow[]>([])
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('new') === '1') setAddOpen(true)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -305,7 +310,33 @@ export default function PurchasesPage() {
         </div>
       )}
 
-      <div className="p-6">
+      {/* Mobile card list */}
+      <div className="p-4 md:hidden space-y-2">
+        {loading && <p className="text-center py-10 text-slate-400">Loading…</p>}
+        {!loading && rows.length === 0 && (
+          <p className="text-center py-12 text-slate-400">No purchases recorded yet. Tap + Add Purchase to get started.</p>
+        )}
+        {rows.map(r => (
+          <div key={r.id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-800 truncate">{r.brand_name}</p>
+                <p className="text-xs text-slate-500 truncate">{r.sku_name}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{formatDate(r.date)} · {r.cases} cases + {r.loose_units} loose = {formatNumber(r.total_bottles)} btl</p>
+              </div>
+              <div className="text-right shrink-0">
+                {r.is_free_stock
+                  ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">FREE</span>
+                  : <span className="text-base font-semibold text-slate-800">{formatINR(r.total_amount, 2)}</span>
+                }
+              </div>
+            </div>
+            {r.notes && <p className="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">{r.notes}</p>}
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden md:block p-6">
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>

@@ -7,7 +7,8 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
-import { formatINR, formatDate, formatNumber, todayISO } from '@/lib/formatters'
+import DateInput from '@/components/ui/DateInput'
+import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO } from '@/lib/formatters'
 import type { Sku, CurrentStockRow, StockMovement } from '@/types/database'
 
 // ─── Opening Stock Modal ──────────────────────────────────────────────────────
@@ -92,10 +93,10 @@ function OpeningStockModal({ open, onClose, onSaved, skus }: {
         </FormField>
 
         <FormField label="As of Date" required>
-          <Input type="date" value={form.date} onChange={set('date')} max={todayISO()} />
+          <DateInput value={form.date} onChange={iso => setForm(f => ({ ...f, date: iso }))} max={todayISO()} />
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Cases" error={errors.cases}>
             <Input type="number" min="0" value={form.cases} onChange={set('cases')} placeholder="0" error={!!errors.cases} />
           </FormField>
@@ -184,7 +185,7 @@ function AdjustmentModal({ open, onClose, onSaved, skus }: {
   return (
     <Modal open={open} title="Add Adjustment / Damage" onClose={onClose} size="md">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="SKU / Product" required error={errors.sku_id}>
             <Select value={form.sku_id} onChange={set('sku_id')} error={!!errors.sku_id}>
               <option value="">Select product</option>
@@ -192,11 +193,11 @@ function AdjustmentModal({ open, onClose, onSaved, skus }: {
             </Select>
           </FormField>
           <FormField label="Date" required>
-            <Input type="date" value={form.date} onChange={set('date')} />
+            <DateInput value={form.date} onChange={iso => setForm(f => ({ ...f, date: iso }))} min={minBackdateISO()} max={todayISO()} />
           </FormField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Entry Type">
             <Select value={form.type} onChange={set('type')}>
               <option value="adjustment">Adjustment (stock correction)</option>
@@ -213,7 +214,7 @@ function AdjustmentModal({ open, onClose, onSaved, skus }: {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Cases" error={errors.cases}>
             <Input type="number" min="0" value={form.cases} onChange={set('cases')} placeholder="0" error={!!errors.cases} />
           </FormField>
@@ -379,7 +380,45 @@ export default function StockPage() {
         </div>
       )}
 
-      <div className="p-6">
+      {/* Mobile card list */}
+      <div className="p-4 md:hidden space-y-2">
+        {loading && <p className="text-center py-10 text-slate-400">Loading…</p>}
+        {!loading && stock.length === 0 && (
+          <p className="text-center py-12 text-slate-400">No stock data yet. Add purchases first.</p>
+        )}
+        {stock.map(r => {
+          const isLow = r.total_bottles > 0 && r.reorder_level_bottles > 0 && r.total_bottles <= r.reorder_level_bottles
+          const isOut = r.total_bottles <= 0
+          return (
+            <button
+              key={r.sku_id}
+              onClick={() => setHistSku({ id: r.sku_id, name: r.sku_name })}
+              className={`w-full text-left rounded-lg border p-3 flex items-center justify-between gap-3 ${
+                isOut ? 'bg-red-50 border-red-200' : isLow ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="font-medium text-slate-800 truncate">{r.sku_name}</p>
+                <p className="text-xs text-slate-500 truncate">{r.brand_name}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{formatNumber(r.cases)} cases + {r.loose_units} loose</p>
+              </div>
+              <div className="text-right shrink-0">
+                {isOut
+                  ? <span className="text-sm font-semibold text-red-600">Out of stock</span>
+                  : <span className={`text-base font-semibold ${isLow ? 'text-amber-700' : 'text-slate-800'}`}>{formatNumber(r.total_bottles)}</span>
+                }
+                {isLow && !isOut && (
+                  <span className="flex items-center justify-end gap-1 text-xs text-amber-600 mt-0.5">
+                    <AlertTriangle size={12} />Low stock
+                  </span>
+                )}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="hidden md:block p-6">
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>

@@ -8,7 +8,8 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
-import { formatINR, formatDate, formatNumber, todayISO } from '@/lib/formatters'
+import DateInput from '@/components/ui/DateInput'
+import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO } from '@/lib/formatters'
 import type { CustomerDueRow } from '@/types/database'
 
 // ─── Record Payment Modal ─────────────────────────────────────────────────────
@@ -42,6 +43,8 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, customerName }
     const e: Record<string, string> = {}
     if (!form.amount || Number(form.amount) <= 0) e.amount = 'Enter a valid amount'
     if (!form.date) e.date = 'Required'
+    else if (form.date < minBackdateISO()) e.date = 'Date cannot be more than 15 days in the past'
+    else if (form.date > todayISO()) e.date = 'Date cannot be in the future'
     if (Object.keys(e).length) { setErrors(e); return }
     setSaving(true)
 
@@ -85,12 +88,12 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, customerName }
             </Select>
           </FormField>
         )}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Amount (₹)" required error={errors.amount}>
             <Input type="number" min="0" step="0.01" value={form.amount} onChange={set('amount')} placeholder="0.00" error={!!errors.amount} autoFocus />
           </FormField>
-          <FormField label="Date" required error={errors.date}>
-            <Input type="date" value={form.date} onChange={set('date')} error={!!errors.date} />
+          <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
+            <DateInput value={form.date} onChange={iso => setForm(f => ({ ...f, date: iso }))} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
           </FormField>
         </div>
         <FormField label="Payment Mode">
@@ -154,7 +157,51 @@ export default function CustomersPage() {
         </div>
       )}
 
-      <div className="p-6">
+      {/* Mobile card list */}
+      <div className="p-4 md:hidden space-y-2">
+        {loading && <p className="text-center py-10 text-slate-400">Loading…</p>}
+        {!loading && rows.length === 0 && (
+          <p className="text-center py-12 text-slate-400">No customers yet. Add customers in Settings.</p>
+        )}
+        {rows.map(r => {
+          const daysOut = r.days_outstanding != null ? Number(r.days_outstanding) : null
+          const isOverdue = daysOut != null && r.credit_period_days != null && daysOut > Number(r.credit_period_days)
+          const hasDue = Number(r.total_due) > 0
+          return (
+            <div key={r.customer_id} className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <Link href={`/customers/${r.customer_id}`} className="font-medium text-blue-600 hover:underline truncate block">
+                    {r.customer_name}
+                  </Link>
+                  {daysOut != null && hasDue && (
+                    <span className={`flex items-center gap-1 text-xs mt-0.5 ${isOverdue ? 'text-red-600' : 'text-slate-500'}`}>
+                      {isOverdue && <AlertTriangle size={12} />}
+                      {daysOut} days outstanding
+                    </span>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  {hasDue
+                    ? <span className={`text-base font-semibold ${isOverdue ? 'text-red-600' : 'text-slate-800'}`}>{formatINR(Number(r.total_due), 2)}</span>
+                    : <span className="text-green-600 text-xs font-medium">Settled</span>
+                  }
+                </div>
+              </div>
+              {hasDue && (
+                <button
+                  onClick={() => setPayModal({ id: r.customer_id, name: r.customer_name })}
+                  className="mt-3 w-full flex items-center justify-center gap-1 text-sm font-medium bg-green-50 text-green-700 hover:bg-green-100 min-h-11 rounded-lg transition-colors"
+                >
+                  <DollarSign size={14} />Record Payment
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="hidden md:block p-6">
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>

@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select } from '@/components/ui/FormField'
+import DateInput from '@/components/ui/DateInput'
 import { formatDate, todayISO } from '@/lib/formatters'
 import type { Brand, Sku, IndentStatus } from '@/types/database'
 
@@ -68,7 +69,7 @@ function CreateIndentModal({ open, onClose, onSaved }: { open: boolean; onClose:
   return (
     <Modal open={open} title="Create Indent (Purchase Order)" onClose={onClose} size="lg">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Brand / Supplier" required error={errors.brand}>
             <Select value={brand_id} onChange={e => setBrandId(e.target.value)} error={!!errors.brand}>
               <option value="">Select brand</option>
@@ -76,7 +77,7 @@ function CreateIndentModal({ open, onClose, onSaved }: { open: boolean; onClose:
             </Select>
           </FormField>
           <FormField label="Date" required>
-            <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+            <DateInput value={date} onChange={setDate} max={todayISO()} />
           </FormField>
         </div>
 
@@ -85,17 +86,17 @@ function CreateIndentModal({ open, onClose, onSaved }: { open: boolean; onClose:
           {errors.items && <p className="text-xs text-red-600">{errors.items}</p>}
           {items.map((item, idx) => (
             <div key={idx} className="flex items-center gap-3">
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <Select value={item.sku_id} onChange={e => setItem(idx, 'sku_id', e.target.value)} disabled={!brand_id}>
                   <option value="">Select SKU</option>
                   {skus.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </Select>
               </div>
-              <div className="w-28">
+              <div className="w-20 md:w-28 shrink-0">
                 <Input type="number" min="1" value={item.cases} onChange={e => setItem(idx, 'cases', e.target.value)} placeholder="Cases" />
               </div>
               {items.length > 1 && (
-                <button onClick={() => removeItem(idx)} className="text-slate-400 hover:text-red-500 text-lg leading-none">×</button>
+                <button onClick={() => removeItem(idx)} className="text-slate-400 hover:text-red-500 text-lg leading-none shrink-0">×</button>
               )}
             </div>
           ))}
@@ -118,6 +119,10 @@ export default function IndentsPage() {
   const [indents, setIndents] = useState<IndentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('new') === '1') setAddOpen(true)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)

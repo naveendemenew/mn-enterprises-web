@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { TrendingUp, TrendingDown, Package, AlertTriangle, Users, Building2, Receipt, Fuel } from 'lucide-react'
+import {
+  TrendingUp, TrendingDown, Package, AlertTriangle, Users, Building2, Receipt, Fuel,
+  ShoppingCart, Truck, Wallet, Car, ClipboardList,
+} from 'lucide-react'
 import Link from 'next/link'
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend,
@@ -107,6 +110,29 @@ export default function OverviewPage() {
   const [duesTable, setDuesTable] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Today's snapshot (mobile Home tab) — independent of the selected date range
+  const [todaySales, setTodaySales] = useState(0)
+  const [todayCollections, setTodayCollections] = useState(0)
+  const [todayExpenses, setTodayExpenses] = useState(0)
+
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    Promise.all([
+      supabase.from('stock_movements')
+        .select('total_bottles, price_per_bottle, is_free_stock, movement_type')
+        .eq('date', today),
+      supabase.from('payments').select('amount').eq('type', 'received_from_customer').eq('date', today),
+      supabase.from('expenses').select('amount').eq('date', today),
+    ]).then(([movRes, payRes, expRes]) => {
+      const sales = (movRes.data ?? [])
+        .filter(m => m.movement_type === 'outward' && !m.is_free_stock)
+        .reduce((s, m) => s + m.total_bottles * (m.price_per_bottle ?? 0), 0)
+      setTodaySales(sales)
+      setTodayCollections((payRes.data ?? []).reduce((s, p) => s + Number(p.amount), 0))
+      setTodayExpenses((expRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0))
+    })
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     const { from, to } = range
@@ -181,8 +207,70 @@ export default function OverviewPage() {
 
   const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']
 
+  const QUICK_ACTIONS = [
+    { href: '/sales?new=1',    label: 'Sale',                icon: ShoppingCart, color: 'bg-green-50 text-green-700' },
+    { href: '/purchases?new=1', label: 'Purchase',           icon: Truck,        color: 'bg-blue-50 text-blue-700' },
+    { href: '/customers',      label: 'Payment In',          icon: Wallet,       color: 'bg-emerald-50 text-emerald-700' },
+    { href: '/vehicles?new=1', label: 'Expense / Vehicle Log', icon: Car,        color: 'bg-amber-50 text-amber-700' },
+  ]
+
   return (
     <div>
+      {/* ─── Mobile Home tab ─────────────────────────────────────────────── */}
+      <div className="md:hidden">
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3">
+          <h1 className="text-lg font-semibold text-slate-800">Home</h1>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Today's snapshot */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white rounded-xl border border-slate-200 p-3 text-center">
+              <p className="text-xs text-slate-500 mb-1">Today's Sales</p>
+              <p className="text-base font-bold text-slate-800">{formatINR(todaySales, 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-3 text-center">
+              <p className="text-xs text-slate-500 mb-1">Collections</p>
+              <p className="text-base font-bold text-emerald-600">{formatINR(todayCollections, 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-3 text-center">
+              <p className="text-xs text-slate-500 mb-1">Expenses</p>
+              <p className="text-base font-bold text-amber-600">{formatINR(todayExpenses, 0)}</p>
+            </div>
+          </div>
+
+          {/* Quick entry */}
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700 mb-2">Quick Entry</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {QUICK_ACTIONS.map(({ href, label, icon: Icon, color }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col items-center justify-center gap-2 min-h-24 text-center active:bg-slate-50 transition-colors"
+                >
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
+                    <Icon size={20} />
+                  </div>
+                  <span className="text-sm font-medium text-slate-700">{label}</span>
+                </Link>
+              ))}
+              <Link
+                href="/indents?new=1"
+                className="col-span-2 bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-center gap-2 min-h-14 text-center active:bg-slate-50 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-purple-50 text-purple-700 shrink-0">
+                  <ClipboardList size={20} />
+                </div>
+                <span className="text-sm font-medium text-slate-700">Raise Indent</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Desktop Overview ────────────────────────────────────────────── */}
+      <div className="hidden md:block">
       {/* Header + date filter */}
       <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-3">
         <div className="flex items-center justify-between gap-4">
@@ -349,6 +437,7 @@ export default function OverviewPage() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

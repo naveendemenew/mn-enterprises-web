@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
+import DateInput from '@/components/ui/DateInput'
 import { formatDate, formatNumber, todayISO, minBackdateISO } from '@/lib/formatters'
 import type { Vehicle, Driver } from '@/types/database'
 
@@ -72,7 +73,7 @@ function AddLogModal({ open, onClose, onSaved }: { open: boolean; onClose: () =>
   return (
     <Modal open={open} title="Add Vehicle Log Entry" onClose={onClose} size="md">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Vehicle" required error={errors.vehicle_id}>
             <Select value={form.vehicle_id} onChange={set('vehicle_id')} error={!!errors.vehicle_id}>
               <option value="">Select vehicle</option>
@@ -87,12 +88,12 @@ function AddLogModal({ open, onClose, onSaved }: { open: boolean; onClose: () =>
           </FormField>
         </div>
         <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
-          <Input type="date" value={form.date} onChange={set('date')} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
+          <DateInput value={form.date} onChange={iso => setForm(f => ({ ...f, date: iso }))} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
         </FormField>
 
         <div className="border border-slate-200 rounded-lg p-4 space-y-3">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Odometer</p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="Start (km)">
               <Input type="number" min="0" value={form.odo_start} onChange={set('odo_start')} placeholder="e.g. 12500" />
             </FormField>
@@ -105,7 +106,7 @@ function AddLogModal({ open, onClose, onSaved }: { open: boolean; onClose: () =>
 
         <div className="border border-slate-200 rounded-lg p-4 space-y-3">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1"><Fuel size={12} />Diesel Fill</p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="Litres" hint="Leave blank if no diesel today">
               <Input type="number" min="0" step="0.01" value={form.diesel_litres} onChange={set('diesel_litres')} placeholder="0.00" />
             </FormField>
@@ -135,6 +136,10 @@ export default function VehiclesPage() {
   const [logs, setLogs] = useState<LogRow[]>([])
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('new') === '1') setAddOpen(true)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -181,7 +186,36 @@ export default function VehiclesPage() {
         </div>
       )}
 
-      <div className="p-6">
+      {/* Mobile card list */}
+      <div className="p-4 md:hidden space-y-2">
+        {loading && <p className="text-center py-10 text-slate-400">Loading…</p>}
+        {!loading && logs.length === 0 && (
+          <p className="text-center py-12 text-slate-400">No vehicle logs yet. Tap + Add Log.</p>
+        )}
+        {logs.map(l => (
+          <div key={l.id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-800 truncate">{l.vehicle_name}</p>
+                <p className="text-xs text-slate-500 truncate">{l.driver_name ?? '—'}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{formatDate(l.date)}</p>
+              </div>
+              <div className="text-right shrink-0">
+                {l.km_travelled != null && <p className="text-base font-semibold text-blue-700">{l.km_travelled} km</p>}
+                {l.diesel_amount != null && <p className="text-xs text-amber-700">₹{Number(l.diesel_amount).toFixed(2)} diesel</p>}
+              </div>
+            </div>
+            {(l.odo_start != null || l.diesel_litres != null) && (
+              <p className="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">
+                {l.odo_start != null && `${formatNumber(l.odo_start)} → ${l.odo_end != null ? formatNumber(l.odo_end) : '—'} km`}
+                {l.diesel_litres != null && ` · ${l.diesel_litres} L${l.diesel_rate != null ? ` @ ₹${Number(l.diesel_rate).toFixed(2)}` : ''}`}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden md:block p-6">
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>

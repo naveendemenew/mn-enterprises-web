@@ -426,8 +426,8 @@ export default function ProfitPage() {
           </div>
         )}
 
-        {/* Profit trend chart */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        {/* Profit trend chart (desktop only) */}
+        <div className="hidden md:block bg-white rounded-xl border border-slate-200 p-5">
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Daily Revenue vs Gross Profit — {presetLabel}</h2>
           {loading
             ? <p className="text-slate-400 text-sm text-center py-8">Loading…</p>
@@ -462,17 +462,25 @@ export default function ProfitPage() {
           {loading
             ? <p className="text-center py-10 text-slate-400">Loading…</p>
             : (
-              <div className="overflow-x-auto">
-                {activeTab === 'brand' && <BrandTable rows={data.byBrand} prevMap={prevBrandMap} />}
-                {activeTab === 'sku' && <SkuTable rows={data.bySku} prevMap={prevSkuMap} />}
-                {activeTab === 'customer' && <CustomerTable rows={data.byCustomer} prevMap={prevCustMap} />}
-              </div>
+              <>
+                {/* Mobile card lists */}
+                <div className="md:hidden p-3 space-y-2">
+                  {activeTab === 'brand' && <BrandCards rows={data.byBrand} prevMap={prevBrandMap} />}
+                  {activeTab === 'sku' && <SkuCards rows={data.bySku} prevMap={prevSkuMap} />}
+                  {activeTab === 'customer' && <CustomerCards rows={data.byCustomer} prevMap={prevCustMap} />}
+                </div>
+                <div className="hidden md:block overflow-x-auto">
+                  {activeTab === 'brand' && <BrandTable rows={data.byBrand} prevMap={prevBrandMap} />}
+                  {activeTab === 'sku' && <SkuTable rows={data.bySku} prevMap={prevSkuMap} />}
+                  {activeTab === 'customer' && <CustomerTable rows={data.byCustomer} prevMap={prevCustMap} />}
+                </div>
+              </>
             )}
         </div>
 
-        {/* Brand profit bar chart */}
+        {/* Brand profit bar chart (desktop only) */}
         {!loading && data.byBrand.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-slate-200 p-5">
               <h2 className="text-sm font-semibold text-slate-700 mb-4">Profit by Brand</h2>
               <ResponsiveContainer width="100%" height={Math.max(180, data.byBrand.length * 52)}>
@@ -511,7 +519,27 @@ export default function ProfitPage() {
               <h2 className="text-sm font-semibold text-slate-700">Complimentary / Scheme Stock Received</h2>
               <span className="ml-auto text-xs text-slate-400">Inward is_free_stock = true · cost = ₹0 · profit when sold = full sale price</span>
             </div>
-            <div className="overflow-x-auto">
+            {/* Mobile card list */}
+            <div className="md:hidden space-y-2">
+              {data.freeInward.map((f, i) => (
+                <div key={i} className="rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-800 truncate">{f.sku_name}</p>
+                      <p className="text-xs text-slate-500">{f.brand_name}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{formatNumber(f.bottles)} bottles</p>
+                    </div>
+                    <p className="font-semibold text-amber-700 shrink-0">{formatINR(f.potentialValue, 0)}</p>
+                  </div>
+                </div>
+              ))}
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-700">Total ({formatNumber(data.freeInward.reduce((s, f) => s + f.bottles, 0))} bottles)</span>
+                <span className="font-bold text-amber-800">{formatINR(data.totals.compStock, 0)}</span>
+              </div>
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100">
@@ -556,6 +584,85 @@ function MarginBar({ margin }: { margin: number }) {
       </div>
       <span className="text-xs text-slate-600 w-10 text-right">{margin.toFixed(1)}%</span>
     </div>
+  )
+}
+
+function BrandCards({ rows, prevMap }: { rows: BrandProfit[]; prevMap: Record<string, BrandProfit> }) {
+  if (rows.length === 0) return <p className="text-center py-10 text-slate-400">No data for this period.</p>
+  return (
+    <>
+      {rows.map((r, i) => {
+        const prev = prevMap[r.brand_id]
+        return (
+          <div key={r.brand_id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-800 truncate">#{i + 1} {r.brand_name}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{formatNumber(r.bottles)} bottles · Rev {formatINR(r.revenue, 0)}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="font-semibold text-emerald-700">{formatINR(r.profit, 0)}</p>
+                {prev && <DeltaBadge current={r.profit} previous={prev.profit} />}
+              </div>
+            </div>
+            <div className="mt-2"><MarginBar margin={r.margin} /></div>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+function SkuCards({ rows, prevMap }: { rows: SkuProfit[]; prevMap: Record<string, SkuProfit> }) {
+  if (rows.length === 0) return <p className="text-center py-10 text-slate-400">No data for this period.</p>
+  return (
+    <>
+      {rows.map((r, i) => {
+        const prev = prevMap[r.sku_id]
+        return (
+          <div key={r.sku_id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-800 truncate">#{i + 1} {r.sku_name}</p>
+                <p className="text-xs text-slate-500">{r.brand_name}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{formatNumber(r.bottles)} bottles · Rev {formatINR(r.revenue, 0)}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="font-semibold text-emerald-700">{formatINR(r.profit, 0)}</p>
+                {prev && <DeltaBadge current={r.profit} previous={prev.profit} />}
+              </div>
+            </div>
+            <div className="mt-2"><MarginBar margin={r.margin} /></div>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+function CustomerCards({ rows, prevMap }: { rows: CustomerProfit[]; prevMap: Record<string, CustomerProfit> }) {
+  if (rows.length === 0) return <p className="text-center py-10 text-slate-400">No data for this period.</p>
+  return (
+    <>
+      {rows.map((r, i) => {
+        const prev = prevMap[r.customer_id]
+        return (
+          <div key={r.customer_id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-800 truncate">#{i + 1} {r.customer_name}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{formatNumber(r.bottles)} bottles · Rev {formatINR(r.revenue, 0)}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="font-semibold text-emerald-700">{formatINR(r.profit, 0)}</p>
+                {prev && <DeltaBadge current={r.profit} previous={prev.profit} />}
+              </div>
+            </div>
+            <div className="mt-2"><MarginBar margin={r.margin} /></div>
+          </div>
+        )
+      })}
+    </>
   )
 }
 

@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
+import DateInput from '@/components/ui/DateInput'
 import { formatINR, formatDate, todayISO, minBackdateISO } from '@/lib/formatters'
 import type { ExpenseCategory, Vehicle, Driver } from '@/types/database'
 
@@ -72,21 +73,21 @@ function AddExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose: (
   return (
     <Modal open={open} title="Add Expense" onClose={onClose} size="md">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Category" required hint="Diesel expenses are added automatically from Vehicle Logs">
             <Select value={form.category} onChange={set('category')}>
               {Object.entries(CATEGORY_LABELS).filter(([k]) => k !== 'diesel').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </FormField>
           <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
-            <Input type="date" value={form.date} onChange={set('date')} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
+            <DateInput value={form.date} onChange={iso => setForm(f => ({ ...f, date: iso }))} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
           </FormField>
         </div>
         <FormField label="Amount (₹)" required error={errors.amount}>
           <Input type="number" min="0" step="0.01" value={form.amount} onChange={set('amount')} placeholder="0.00" error={!!errors.amount} autoFocus />
         </FormField>
         {(form.category === 'diesel' || form.category === 'maintenance' || form.category === 'driver_payment') && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="Vehicle">
               <Select value={form.vehicle_id} onChange={set('vehicle_id')}>
                 <option value="">None</option>
@@ -166,7 +167,39 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      <div className="p-6">
+      {/* Mobile card list */}
+      <div className="p-4 md:hidden space-y-2">
+        {loading && <p className="text-center py-10 text-slate-400">Loading…</p>}
+        {!loading && filtered.length === 0 && (
+          <p className="text-center py-12 text-slate-400">No expenses yet.</p>
+        )}
+        {filtered.map(r => (
+          <div key={r.id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${CATEGORY_COLORS[r.category]}`}>
+                  {CATEGORY_LABELS[r.category]}
+                </span>
+                {r.is_auto_diesel && <span className="ml-1 text-xs text-slate-400">(auto)</span>}
+                <p className="text-xs text-slate-400 mt-1">{formatDate(r.date)}</p>
+                {(r.vehicle_name || r.driver_name) && (
+                  <p className="text-xs text-slate-500 mt-0.5">{[r.vehicle_name, r.driver_name].filter(Boolean).join(' · ')}</p>
+                )}
+              </div>
+              <div className="text-base font-semibold text-slate-800 shrink-0">{formatINR(r.amount, 2)}</div>
+            </div>
+            {r.notes && <p className="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">{r.notes}</p>}
+          </div>
+        ))}
+        {filtered.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-700">Total</span>
+            <span className="text-base font-bold text-slate-800">{formatINR(total, 2)}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="hidden md:block p-6">
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>

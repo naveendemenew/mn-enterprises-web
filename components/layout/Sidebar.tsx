@@ -40,7 +40,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`flex flex-col bg-slate-900 text-slate-300 transition-all duration-200 shrink-0 ${
+      className={`hidden md:flex flex-col bg-slate-900 text-slate-300 transition-all duration-200 shrink-0 ${
         collapsed ? 'w-16' : 'w-60'
       }`}
     >

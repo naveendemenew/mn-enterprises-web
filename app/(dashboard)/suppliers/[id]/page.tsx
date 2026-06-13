@@ -9,6 +9,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
+import DateInput from '@/components/ui/DateInput'
 import { formatINR, formatDate, todayISO, minBackdateISO } from '@/lib/formatters'
 import type { PaymentMode } from '@/types/database'
 
@@ -87,12 +88,12 @@ function RecordPaymentModal({ open, onClose, onSaved, brandId, bills }: {
           </Select>
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Amount (₹)" required error={errors.amount}>
             <Input type="number" min="0" step="0.01" value={form.amount} onChange={set('amount')} placeholder="0.00" error={!!errors.amount} autoFocus />
           </FormField>
           <FormField label="Date" required error={errors.date} hint="Backdated entries allowed up to 15 days">
-            <Input type="date" value={form.date} onChange={set('date')} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
+            <DateInput value={form.date} onChange={iso => setForm(f => ({ ...f, date: iso }))} min={minBackdateISO()} max={todayISO()} error={!!errors.date} />
           </FormField>
         </div>
 
@@ -183,7 +184,7 @@ export default function SupplierDetailPage() {
         }
       />
 
-      <div className="flex gap-6 px-6 py-4 bg-white border-b border-slate-200">
+      <div className="flex flex-wrap gap-6 px-6 py-4 bg-white border-b border-slate-200">
         <div className="text-center">
           <p className="text-xs text-slate-500 uppercase tracking-wide">Total Billed</p>
           <p className="text-lg font-semibold text-slate-800">{formatINR(totalBilled, 2)}</p>
@@ -201,7 +202,31 @@ export default function SupplierDetailPage() {
       {/* Ledger */}
       <div className="p-6 pb-0">
         <h2 className="text-sm font-semibold text-slate-700 mb-3">Account Ledger</h2>
-        <div className="rounded-lg border border-slate-200 overflow-hidden">
+
+        {/* Mobile card list */}
+        <div className="md:hidden space-y-2">
+          {ledger.length === 0 && <p className="text-center py-6 text-slate-400">No transactions yet</p>}
+          {ledger.map((l, i) => (
+            <div key={i} className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${l.type === 'Bill' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                    {l.type}
+                  </span>
+                  <p className="text-xs text-slate-500 mt-1">{l.description}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{formatDate(l.date)}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  {l.debit > 0 && <p className="text-red-600 font-medium">{formatINR(l.debit, 2)}</p>}
+                  {l.credit > 0 && <p className="text-green-600 font-medium">{formatINR(l.credit, 2)}</p>}
+                  <p className="text-xs text-slate-500 mt-0.5">Bal: {formatINR(l.balance, 2)}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden md:block rounded-lg border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -234,7 +259,29 @@ export default function SupplierDetailPage() {
       <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
           <h2 className="text-sm font-semibold text-slate-700 mb-3">Purchase Bills</h2>
-          <div className="rounded-lg border border-slate-200 overflow-hidden">
+
+          {/* Mobile card list */}
+          <div className="md:hidden space-y-2">
+            {bills.length === 0 && <p className="text-center py-6 text-slate-400">No bills</p>}
+            {bills.map(b => (
+              <div key={b.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-slate-700">{b.invoice_number ?? 'No invoice #'}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{formatDate(b.date)}</p>
+                    <div className="mt-1">{statusBadge(b.payment_status)}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-semibold text-slate-800">{formatINR(b.total_amount, 2)}</p>
+                    <p className="text-xs text-green-600">Paid {formatINR(b.amount_paid, 2)}</p>
+                    <p className="text-xs text-red-600 font-medium">Due {formatINR(b.total_amount - b.amount_paid, 2)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden md:block rounded-lg border border-slate-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
@@ -262,7 +309,25 @@ export default function SupplierDetailPage() {
 
         <div>
           <h2 className="text-sm font-semibold text-slate-700 mb-3">Payments Made</h2>
-          <div className="rounded-lg border border-slate-200 overflow-hidden">
+
+          {/* Mobile card list */}
+          <div className="md:hidden space-y-2">
+            {payments.length === 0 && <p className="text-center py-6 text-slate-400">No payments recorded</p>}
+            {payments.map(p => (
+              <div key={p.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-slate-600 capitalize">{p.mode}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{formatDate(p.date)}</p>
+                    {p.notes && <p className="text-xs text-slate-500 mt-1">{p.notes}</p>}
+                  </div>
+                  <p className="font-semibold text-slate-800 shrink-0">{formatINR(p.amount, 2)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden md:block rounded-lg border border-slate-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
