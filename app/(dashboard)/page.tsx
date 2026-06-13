@@ -247,7 +247,7 @@ export default function OverviewPage() {
                       <Pie data={stockByCategory} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value">
                         {stockByCategory.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip formatter={(v: number) => formatINR(v, 0)} />
+                      <Tooltip formatter={(v) => formatINR(Number(v), 0)} />
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="space-y-1.5 mt-3">
