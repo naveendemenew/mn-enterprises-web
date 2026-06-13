@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   LayoutDashboard, TrendingUp, Building2, ClipboardList, Receipt, Car,
-  Settings, Package, ShoppingCart, Truck, ChevronRight,
+  Settings, Package, ShoppingCart, Truck, ChevronRight, LogOut,
 } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 
@@ -21,10 +22,18 @@ const MENU_ITEMS = [
 ]
 
 export default function MorePage() {
+  const router = useRouter()
+
+  const logout = async () => {
+    await fetch('/api/logout', { method: 'POST' })
+    router.push('/login')
+    router.refresh()
+  }
+
   return (
     <div>
       <PageHeader title="More" subtitle="All sections of the app" />
-      <div className="p-4">
+      <div className="p-4 space-y-4">
         <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
           {MENU_ITEMS.map(({ href, label, icon: Icon }) => (
             <Link
@@ -40,6 +49,14 @@ export default function MorePage() {
             </Link>
           ))}
         </div>
+
+        <button
+          onClick={logout}
+          className="w-full flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-4 min-h-14 text-sm font-medium text-red-600 hover:bg-red-50 active:bg-red-100 transition-colors"
+        >
+          <LogOut size={18} />
+          Log out
+        </button>
       </div>
     </div>
   )
