@@ -19,11 +19,11 @@ export async function POST(request: Request) {
   const token = await createSessionToken(String(phone).trim())
   const response = NextResponse.json({ success: true })
   response.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: SESSION_MAX_AGE,
+    httpOnly: true,                                     // not accessible via JS
+    secure: process.env.NODE_ENV === 'production',      // HTTPS only in production (Vercel always uses HTTPS)
+    sameSite: 'lax',                                    // safe default: sent on top-level navigations
+    path: '/',                                          // available on all routes
+    maxAge: SESSION_MAX_AGE,                            // 30 days
   })
   return response
 }
