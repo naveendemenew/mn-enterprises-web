@@ -38,6 +38,8 @@ interface FormState {
   loose_units: string
   price_per_bottle: string
   is_free_gift: boolean
+  amount_received: string
+  payment_mode: string
   notes: string
 }
 
@@ -50,6 +52,8 @@ const BLANK: FormState = {
   loose_units: '0',
   price_per_bottle: '',
   is_free_gift: false,
+  amount_received: '',
+  payment_mode: 'cash',
   notes: '',
 }
 
@@ -124,21 +128,42 @@ function AddSaleModal({ open, onClose, onSaved }: { open: boolean; onClose: () =
     if (!validate()) return
     setSaving(true)
 
+    const amountReceived = Number(form.amount_received) || 0
+
     // Create invoice first (with auto-generated invoice number)
     let invoiceId: string | null = null
     if (!form.is_free_gift && totalAmount > 0) {
       const { data: invNum } = await supabase.rpc('next_invoice_number', {
         p_type: 'SAL', p_year: currentFinancialYear(),
       })
+      const amountPaid = Math.min(amountReceived, totalAmount)
+      const paymentStatus = amountPaid >= totalAmount ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid'
       const { data: inv } = await supabase.from('invoices').insert({
         customer_id: form.customer_id,
         date: form.date,
         total_amount: totalAmount,
-        amount_paid: 0,
-        payment_status: 'unpaid',
+        amount_paid: amountPaid,
+        payment_status: paymentStatus,
         invoice_number: invNum ?? null,
       }).select('id').single()
       invoiceId = inv?.id ?? null
+
+      // If payment was received at time of sale, record it
+      if (amountPaid > 0 && invoiceId) {
+        const { data: recNum } = await supabase.rpc('next_invoice_number', {
+          p_type: 'REC', p_year: currentFinancialYear(),
+        })
+        await supabase.from('payments').insert({
+          type: 'received_from_customer',
+          customer_id: form.customer_id,
+          invoice_id: invoiceId,
+          amount: amountPaid,
+          date: form.date,
+          mode: form.payment_mode as any,
+          notes: 'Collected at time of sale',
+          mn_number: recNum ?? null,
+        })
+      }
     }
 
     await supabase.from('stock_movements').insert({
@@ -235,6 +260,37 @@ function AddSaleModal({ open, onClose, onSaved }: { open: boolean; onClose: () =
                 <span className="text-base font-semibold text-slate-800">Total: {formatINR(totalAmount, 2)}</span>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Payment collected now */}
+        {!form.is_free_gift && totalAmount > 0 && (
+          <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 space-y-3">
+            <p className="text-sm font-medium text-emerald-800">Payment collected at time of sale (optional)</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <FormField label="Amount received now (₹)">
+                <Input
+                  type="number" min="0" step="0.01"
+                  value={form.amount_received}
+                  onChange={set('amount_received')}
+                  placeholder={`0.00 of ${formatINR(totalAmount, 2)}`}
+                />
+              </FormField>
+              <FormField label="Payment mode">
+                <Select value={form.payment_mode} onChange={set('payment_mode')}>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank">Bank Transfer</option>
+                  <option value="card">Card</option>
+                </Select>
+              </FormField>
+            </div>
+            {form.amount_received && Number(form.amount_received) > 0 && (
+              <p className="text-xs text-emerald-700">
+                Invoice will be marked as {Number(form.amount_received) >= totalAmount ? 'Paid' : 'Partial'}.
+                {Number(form.amount_received) < totalAmount && ` Balance due: ${formatINR(totalAmount - Number(form.amount_received), 2)}`}
+              </p>
+            )}
           </div>
         )}
 
