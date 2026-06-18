@@ -36,6 +36,7 @@ interface FormState {
   price_per_bottle: string
   is_free_stock: boolean
   purchase_bill_invoice: string
+  damaged_units: string
   notes: string
 }
 
@@ -48,6 +49,7 @@ const BLANK: FormState = {
   price_per_bottle: '',
   is_free_stock: false,
   purchase_bill_invoice: '',
+  damaged_units: '',
   notes: '',
 }
 
@@ -138,7 +140,7 @@ function AddPurchaseModal({
       notes: form.notes.trim() || null,
     }
 
-    const { error: mvErr } = await supabase.from('stock_movements').insert(movementPayload)
+    const { error: mvErr, data: mvData } = await supabase.from('stock_movements').insert(movementPayload).select('id').single()
     if (mvErr) { console.error(mvErr); setSaving(false); return }
 
     // Create purchase bill if total > 0
@@ -154,6 +156,34 @@ function AddPurchaseModal({
         total_amount: totalAmount,
         amount_paid: 0,
         payment_status: 'unpaid',
+      })
+    }
+
+    // Record damaged units as a damage stock movement + damage_record
+    const damagedUnits = Number(form.damaged_units) || 0
+    if (damagedUnits > 0) {
+      const { data: dmgMv } = await supabase.from('stock_movements').insert({
+        sku_id: form.sku_id,
+        movement_type: 'damage' as const,
+        date: form.date,
+        cases: 0,
+        loose_units: damagedUnits,
+        total_bottles: damagedUnits,
+        price_per_bottle: form.is_free_stock ? 0 : priceNum,
+        is_free_stock: form.is_free_stock,
+        brand_id: form.brand_id,
+        notes: `Damage received with purchase — ${damagedUnits} units`,
+      }).select('id').single()
+
+      await supabase.from('damage_records').insert({
+        type: 'brand_claim',
+        date: form.date,
+        sku_id: form.sku_id,
+        units: damagedUnits,
+        brand_id: form.brand_id,
+        stock_movement_id: dmgMv?.id ?? null,
+        status: 'pending',
+        notes: `Damaged units received with inward stock. Linked to movement ${mvData?.id ?? '—'}`,
       })
     }
 
@@ -237,6 +267,24 @@ function AddPurchaseModal({
             </div>
           </div>
         )}
+
+        {/* Damaged units received */}
+        <div className="rounded-lg bg-red-50 border border-red-200 p-3 space-y-2">
+          <p className="text-sm font-medium text-red-800">Damaged / Defective Units (optional)</p>
+          <FormField label="Damaged units received" hint="Records a brand claim — these units are excluded from sellable stock">
+            <Input
+              type="number" min="0"
+              value={form.damaged_units}
+              onChange={set('damaged_units')}
+              placeholder="0"
+            />
+          </FormField>
+          {Number(form.damaged_units) > 0 && (
+            <p className="text-xs text-red-700">
+              {form.damaged_units} units will be logged as damage (movement_type=damage) and a brand claim will be raised.
+            </p>
+          )}
+        </div>
 
         <FormField label="Notes">
           <Textarea value={form.notes} onChange={set('notes')} rows={2} placeholder="Optional notes" />

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Plus, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -123,6 +123,152 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, invoices }: {
   )
 }
 
+// ─── Report Damage Modal ──────────────────────────────────────────────────────
+
+function ReportDamageModal({ open, onClose, onSaved, customerId, invoices }: {
+  open: boolean; onClose: () => void; onSaved: () => void; customerId: string; invoices: any[]
+}) {
+  const supabase = createClient()
+  const [form, setForm] = useState({ invoice_id: '', sku_id: '', units: '', credit_amount: '', resolution: 'credit_note', notes: '' })
+  const [skus, setSkus] = useState<any[]>([])
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (open) {
+      setForm({ invoice_id: '', sku_id: '', units: '', credit_amount: '', resolution: 'credit_note', notes: '' })
+      setErrors({})
+    }
+  }, [open])
+
+  // Load SKUs from the selected invoice's stock_movements
+  useEffect(() => {
+    if (!form.invoice_id) { setSkus([]); return }
+    supabase
+      .from('stock_movements')
+      .select('sku_id, skus(id, name, units_per_case)')
+      .eq('reference_invoice_id', form.invoice_id)
+      .eq('movement_type', 'outward')
+      .then(({ data }) => {
+        const unique = Object.values(
+          Object.fromEntries((data ?? []).map((m: any) => [m.sku_id, m.skus]))
+        ).filter(Boolean)
+        setSkus(unique as any[])
+      })
+  }, [form.invoice_id])
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const save = async () => {
+    const e: Record<string, string> = {}
+    if (!form.invoice_id) e.invoice_id = 'Select an invoice'
+    if (!form.units || Number(form.units) < 1) e.units = 'Enter number of damaged units'
+    if (Object.keys(e).length) { setErrors(e); return }
+    setSaving(true)
+
+    const units = Number(form.units)
+    const creditAmount = Number(form.credit_amount) || 0
+
+    // Create damage stock movement
+    const { data: dmgMv } = await supabase.from('stock_movements').insert({
+      sku_id: form.sku_id || null,
+      movement_type: 'damage' as const,
+      date: new Date().toISOString().slice(0, 10),
+      cases: 0,
+      loose_units: units,
+      total_bottles: units,
+      price_per_bottle: null,
+      is_free_stock: false,
+      customer_id: customerId,
+      reference_invoice_id: form.invoice_id,
+      notes: `Customer damage complaint — ${units} units`,
+    }).select('id').single()
+
+    // Create damage_record
+    await supabase.from('damage_records').insert({
+      type: 'customer_complaint',
+      date: new Date().toISOString().slice(0, 10),
+      sku_id: form.sku_id || null,
+      units,
+      customer_id: customerId,
+      linked_invoice_id: form.invoice_id,
+      stock_movement_id: dmgMv?.id ?? null,
+      credit_amount: creditAmount > 0 ? creditAmount : null,
+      status: 'pending',
+      resolution: form.resolution as any,
+      notes: form.notes.trim() || null,
+    })
+
+    // If credit note: reduce invoice's amount_paid or reduce total_amount
+    if (form.resolution === 'credit_note' && creditAmount > 0 && form.invoice_id) {
+      const inv = invoices.find(i => i.id === form.invoice_id)
+      if (inv) {
+        const newTotal = Math.max(0, Number(inv.total_amount) - creditAmount)
+        const newPaid = Math.min(Number(inv.amount_paid), newTotal)
+        const status = newPaid >= newTotal ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+        await supabase.from('invoices').update({ total_amount: newTotal, amount_paid: newPaid, payment_status: status }).eq('id', form.invoice_id)
+      }
+    }
+
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <Modal open={open} title="Report Customer Damage" onClose={onClose} size="md">
+      <div className="space-y-4">
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+          Damaged units will be removed from sellable stock. If credit note is chosen, the invoice total will be reduced.
+        </div>
+        <FormField label="Invoice" required error={errors.invoice_id} hint="Select the sale invoice this damage is against">
+          <Select value={form.invoice_id} onChange={set('invoice_id')} error={!!errors.invoice_id}>
+            <option value="">Select invoice</option>
+            {invoices.map(i => (
+              <option key={i.id} value={i.id}>
+                {i.invoice_number ? `${i.invoice_number} — ` : ''}{new Date(i.date).toLocaleDateString('en-IN')} ({formatINR(i.total_amount, 2)})
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        {skus.length > 0 && (
+          <FormField label="SKU (optional)" hint="Which product was damaged">
+            <Select value={form.sku_id} onChange={set('sku_id')}>
+              <option value="">Not specified</option>
+              {skus.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </FormField>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField label="Damaged Units" required error={errors.units}>
+            <Input type="number" min="1" value={form.units} onChange={set('units')} placeholder="0" error={!!errors.units} autoFocus />
+          </FormField>
+          <FormField label="Resolution">
+            <Select value={form.resolution} onChange={set('resolution')}>
+              <option value="credit_note">Credit note (reduce invoice)</option>
+              <option value="replacement">Replacement stock</option>
+              <option value="written_off">Written off</option>
+            </Select>
+          </FormField>
+        </div>
+        {form.resolution === 'credit_note' && (
+          <FormField label="Credit Amount (₹)" hint="Amount to deduct from invoice total">
+            <Input type="number" min="0" step="0.01" value={form.credit_amount} onChange={set('credit_amount')} placeholder="0.00" />
+          </FormField>
+        )}
+        <FormField label="Notes">
+          <Textarea value={form.notes} onChange={set('notes')} rows={2} placeholder="Describe the damage" />
+        </FormField>
+        <div className="flex gap-3 justify-end pt-2 border-t border-slate-100">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} loading={saving}>Report Damage</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export default function CustomerDetailPage() {
   const supabase = createClient()
   const params = useParams<{ id: string }>()
@@ -132,6 +278,7 @@ export default function CustomerDetailPage() {
   const [payments, setPayments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [payOpen, setPayOpen] = useState(false)
+  const [damageOpen, setDamageOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -179,8 +326,9 @@ export default function CustomerDetailPage() {
         title={customer.name}
         subtitle={`${customer.phone ?? ''} — ${customer.address ?? ''} — Credit: ${customer.credit_period_days} days`}
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Button onClick={() => setPayOpen(true)} size="sm"><Plus size={14} />Record Payment</Button>
+            <Button onClick={() => setDamageOpen(true)} size="sm" variant="secondary"><AlertTriangle size={14} />Report Damage</Button>
             <Link href="/customers" className="flex items-center gap-1 text-sm text-blue-600 hover:underline">
               <ArrowLeft size={14} />All Customers
             </Link>
@@ -360,6 +508,7 @@ export default function CustomerDetailPage() {
       </div>
 
       <RecordPaymentModal open={payOpen} onClose={() => setPayOpen(false)} onSaved={load} customerId={customerId} invoices={invoices} />
+      <ReportDamageModal open={damageOpen} onClose={() => setDamageOpen(false)} onSaved={load} customerId={customerId} invoices={invoices} />
     </div>
   )
 }

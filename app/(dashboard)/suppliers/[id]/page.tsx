@@ -130,19 +130,22 @@ export default function SupplierDetailPage() {
   const [brand, setBrand] = useState<any>(null)
   const [bills, setBills] = useState<any[]>([])
   const [payments, setPayments] = useState<any[]>([])
+  const [damageClaims, setDamageClaims] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [payOpen, setPayOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [brandRes, billRes, payRes] = await Promise.all([
+    const [brandRes, billRes, payRes, dmgRes] = await Promise.all([
       supabase.from('brands').select('*, categories(name)').eq('id', brandId).single(),
       supabase.from('purchase_bills').select('*').eq('brand_id', brandId).order('date', { ascending: false }),
       supabase.from('payments').select('*').eq('brand_id', brandId).order('date', { ascending: false }),
+      supabase.from('damage_records').select('*, skus(name)').eq('brand_id', brandId).eq('type', 'brand_claim').order('date', { ascending: false }),
     ])
     setBrand(brandRes.data)
     setBills(billRes.data ?? [])
     setPayments(payRes.data ?? [])
+    setDamageClaims(dmgRes.data ?? [])
     setLoading(false)
   }, [brandId])
 
@@ -355,6 +358,56 @@ export default function SupplierDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Damage Claims */}
+      {damageClaims.length > 0 && (
+        <div className="px-6 pb-6">
+          <h2 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">{damageClaims.filter(d => d.status === 'pending').length} Pending</span>
+            Damage Claims Against This Brand
+          </h2>
+          {/* Mobile */}
+          <div className="md:hidden space-y-2">
+            {damageClaims.map(d => (
+              <div key={d.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{d.skus?.name ?? 'Unknown SKU'}</p>
+                    <p className="text-xs text-slate-500">{formatDate(d.date)} · {d.units} units</p>
+                    {d.notes && <p className="text-xs text-slate-400 mt-0.5">{d.notes}</p>}
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded font-medium h-fit ${d.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{d.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Desktop */}
+          <div className="hidden md:block rounded-lg border border-slate-200 overflow-hidden bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  {['Date', 'SKU', 'Units', 'Status', 'Notes'].map(h => (
+                    <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {damageClaims.map(d => (
+                  <tr key={d.id} className="border-b border-slate-100">
+                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDate(d.date)}</td>
+                    <td className="px-3 py-2 text-slate-800">{d.skus?.name ?? '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 text-right">{d.units}</td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${d.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{d.status}</span>
+                    </td>
+                    <td className="px-3 py-2 text-slate-500">{d.notes ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <RecordPaymentModal open={payOpen} onClose={() => setPayOpen(false)} onSaved={load} brandId={brandId} bills={bills} />
     </div>
