@@ -10,7 +10,7 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
 import DateInput from '@/components/ui/DateInput'
-import { formatINR, formatDate, todayISO, minBackdateISO } from '@/lib/formatters'
+import { formatINR, formatDate, todayISO, minBackdateISO, currentFinancialYear } from '@/lib/formatters'
 import type { PaymentMode } from '@/types/database'
 
 // ─── Record Payment Modal ─────────────────────────────────────────────────────
@@ -50,6 +50,9 @@ function RecordPaymentModal({ open, onClose, onSaved, brandId, bills }: {
 
     const amount = Number(form.amount)
 
+    const { data: payNum } = await supabase.rpc('next_invoice_number', {
+      p_type: 'PAY', p_year: currentFinancialYear(),
+    })
     await supabase.from('payments').insert({
       type: 'paid_to_brand',
       brand_id: brandId,
@@ -58,6 +61,7 @@ function RecordPaymentModal({ open, onClose, onSaved, brandId, bills }: {
       date: form.date,
       mode: form.mode,
       notes: form.notes.trim() || null,
+      mn_number: payNum ?? null,
     })
 
     if (form.purchase_bill_id) {

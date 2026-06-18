@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
 import DateInput from '@/components/ui/DateInput'
-import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO } from '@/lib/formatters'
+import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO, currentFinancialYear } from '@/lib/formatters'
 import type { Brand, Sku, PurchaseBill, StockMovement } from '@/types/database'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -141,12 +141,16 @@ function AddPurchaseModal({
     const { error: mvErr } = await supabase.from('stock_movements').insert(movementPayload)
     if (mvErr) { console.error(mvErr); setSaving(false); return }
 
-    // Create purchase bill if invoice number provided or total > 0
+    // Create purchase bill if total > 0
     if (!form.is_free_stock && totalAmount > 0) {
+      const { data: purNum } = await supabase.rpc('next_invoice_number', {
+        p_type: 'PUR', p_year: currentFinancialYear(),
+      })
       await supabase.from('purchase_bills').insert({
         brand_id: form.brand_id,
         date: form.date,
         invoice_number: form.purchase_bill_invoice.trim() || null,
+        mn_invoice_number: purNum ?? null,
         total_amount: totalAmount,
         amount_paid: 0,
         payment_status: 'unpaid',

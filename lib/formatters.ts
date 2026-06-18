@@ -40,6 +40,17 @@ export function minBackdateISO(days = 15): string {
   return d.toISOString().slice(0, 10)
 }
 
+/** Returns the current Indian financial year encoded as a 4-char string.
+ *  FY starts April 1st: Jun 2026 → startYear=2026, endYear=2027 → "2627" */
+export function currentFinancialYear(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1 // 1-indexed
+  const startYear = month >= 4 ? year : year - 1
+  const endYear = startYear + 1
+  return `${String(startYear).slice(-2)}${String(endYear).slice(-2)}`
+}
+
 /** e.g. 5 cases + 3 loose → "5c 3L"  or just "5c" / "3L" */
 export function formatStock(cases: number, loose: number, unitsPerCase?: number): string {
   const parts: string[] = []

@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
 import DateInput from '@/components/ui/DateInput'
-import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO } from '@/lib/formatters'
+import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO, currentFinancialYear } from '@/lib/formatters'
 import type { Customer, Brand, Sku } from '@/types/database'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -16,6 +16,7 @@ import type { Customer, Brand, Sku } from '@/types/database'
 interface SaleRow {
   id: string
   date: string
+  invoice_number: string | null
   customer_name: string
   sku_name: string
   brand_name: string
@@ -123,15 +124,19 @@ function AddSaleModal({ open, onClose, onSaved }: { open: boolean; onClose: () =
     if (!validate()) return
     setSaving(true)
 
-    // Create invoice first
+    // Create invoice first (with auto-generated invoice number)
     let invoiceId: string | null = null
     if (!form.is_free_gift && totalAmount > 0) {
+      const { data: invNum } = await supabase.rpc('next_invoice_number', {
+        p_type: 'SAL', p_year: currentFinancialYear(),
+      })
       const { data: inv } = await supabase.from('invoices').insert({
         customer_id: form.customer_id,
         date: form.date,
         total_amount: totalAmount,
         amount_paid: 0,
         payment_status: 'unpaid',
+        invoice_number: invNum ?? null,
       }).select('id').single()
       invoiceId = inv?.id ?? null
     }
@@ -262,7 +267,7 @@ export default function SalesPage() {
     setLoading(true)
     const { data } = await supabase
       .from('stock_movements')
-      .select('*, skus(name, units_per_case, brands(name)), customers(name)')
+      .select('*, skus(name, units_per_case, brands(name)), customers(name), invoices!reference_invoice_id(invoice_number)')
       .eq('movement_type', 'outward')
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
@@ -271,6 +276,7 @@ export default function SalesPage() {
     setRows((data ?? []).map((m: any) => ({
       id: m.id,
       date: m.date,
+      invoice_number: m.invoices?.invoice_number ?? null,
       customer_name: m.customers?.name ?? '—',
       sku_name: m.skus?.name ?? '—',
       brand_name: m.skus?.brands?.name ?? '—',
@@ -318,7 +324,10 @@ export default function SalesPage() {
           <div key={r.id} className="rounded-lg border border-slate-200 bg-white p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-medium text-slate-800 truncate">{r.customer_name}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-medium text-slate-800 truncate">{r.customer_name}</p>
+                  {r.invoice_number && <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{r.invoice_number}</span>}
+                </div>
                 <p className="text-xs text-slate-500 truncate">{r.brand_name} — {r.sku_name}</p>
                 <p className="text-xs text-slate-400 mt-0.5">{formatDate(r.date)} · {r.cases} cases + {r.loose_units} loose = {formatNumber(r.total_bottles)} btl</p>
               </div>
@@ -339,18 +348,19 @@ export default function SalesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                {['Date', 'Customer', 'Brand', 'SKU / Product', 'Cases', 'Loose', 'Total Btl', 'Price/Btl', 'Amount', 'Notes'].map(h => (
+                {['Invoice #', 'Date', 'Customer', 'Brand', 'SKU / Product', 'Cases', 'Loose', 'Total Btl', 'Price/Btl', 'Amount', 'Notes'].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={10} className="text-center py-10 text-slate-400">Loading…</td></tr>}
+              {loading && <tr><td colSpan={11} className="text-center py-10 text-slate-400">Loading…</td></tr>}
               {!loading && rows.length === 0 && (
-                <tr><td colSpan={10} className="text-center py-12 text-slate-400">No sales recorded yet. Click + Add Sale to get started.</td></tr>
+                <tr><td colSpan={11} className="text-center py-12 text-slate-400">No sales recorded yet. Click + Add Sale to get started.</td></tr>
               )}
               {rows.map(r => (
                 <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="px-4 py-3 text-xs font-mono text-blue-600 whitespace-nowrap">{r.invoice_number ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatDate(r.date)}</td>
                   <td className="px-4 py-3 font-medium text-slate-800">{r.customer_name}</td>
                   <td className="px-4 py-3 text-slate-600">{r.brand_name}</td>

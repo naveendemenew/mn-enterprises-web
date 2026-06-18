@@ -10,7 +10,7 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
 import DateInput from '@/components/ui/DateInput'
-import { formatINR, formatDate, todayISO, minBackdateISO } from '@/lib/formatters'
+import { formatINR, formatDate, todayISO, minBackdateISO, currentFinancialYear } from '@/lib/formatters'
 import type { PaymentMode } from '@/types/database'
 
 // ─── Record Payment Modal ─────────────────────────────────────────────────────
@@ -50,6 +50,9 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, invoices }: {
 
     const amount = Number(form.amount)
 
+    const { data: recNum } = await supabase.rpc('next_invoice_number', {
+      p_type: 'REC', p_year: currentFinancialYear(),
+    })
     await supabase.from('payments').insert({
       type: 'received_from_customer',
       customer_id: customerId,
@@ -58,6 +61,7 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, invoices }: {
       date: form.date,
       mode: form.mode,
       notes: form.notes.trim() || null,
+      mn_number: recNum ?? null,
     })
 
     if (form.invoice_id) {
@@ -82,7 +86,7 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, invoices }: {
             <option value="">General / on account</option>
             {dueInvoices.map(i => (
               <option key={i.id} value={i.id}>
-                {formatDate(i.date)} (Due {formatINR(Number(i.total_amount) - Number(i.amount_paid), 2)})
+                {i.invoice_number ? `${i.invoice_number} — ` : ''}{formatDate(i.date)} (Due {formatINR(Number(i.total_amount) - Number(i.amount_paid), 2)})
               </option>
             ))}
           </Select>
@@ -133,7 +137,7 @@ export default function CustomerDetailPage() {
     setLoading(true)
     const [custRes, invRes, payRes] = await Promise.all([
       supabase.from('customers').select('*').eq('id', customerId).single(),
-      supabase.from('invoices').select('*').eq('customer_id', customerId).order('date', { ascending: false }),
+      supabase.from('invoices').select('*, invoice_number').eq('customer_id', customerId).order('date', { ascending: false }),
       supabase.from('payments').select('*').eq('customer_id', customerId).order('date', { ascending: false }),
     ])
     setCustomer(custRes.data)
@@ -150,8 +154,8 @@ export default function CustomerDetailPage() {
 
   // Combined chronological ledger with running balance (debit = invoiced, credit = paid)
   const ledger = [
-    ...invoices.map(i => ({ date: i.date, created_at: i.created_at, type: 'Invoice', description: 'Sale invoice', debit: Number(i.total_amount), credit: 0 })),
-    ...payments.map(p => ({ date: p.date, created_at: p.created_at, type: 'Payment', description: `Payment received (${p.mode})${p.notes ? ' — ' + p.notes : ''}`, debit: 0, credit: Number(p.amount) })),
+    ...invoices.map(i => ({ date: i.date, created_at: i.created_at, type: 'Invoice', description: i.invoice_number ? `Invoice ${i.invoice_number}` : 'Sale invoice', debit: Number(i.total_amount), credit: 0 })),
+    ...payments.map(p => ({ date: p.date, created_at: p.created_at, type: 'Payment', description: `${p.mn_number ? p.mn_number + ' — ' : ''}Payment received (${p.mode})${p.notes ? ' — ' + p.notes : ''}`, debit: 0, credit: Number(p.amount) })),
   ]
     .sort((a, b) => a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date))
     .reduce<{ date: string; type: string; description: string; debit: number; credit: number; balance: number }[]>((acc, entry) => {
@@ -269,6 +273,7 @@ export default function CustomerDetailPage() {
               <div key={inv.id} className="rounded-lg border border-slate-200 bg-white p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
+                    {inv.invoice_number && <p className="text-xs font-mono text-blue-600 font-medium">{inv.invoice_number}</p>}
                     <p className="text-xs text-slate-400">{formatDate(inv.date)}</p>
                     <div className="mt-1">{statusBadge(inv.payment_status)}</div>
                   </div>
@@ -286,15 +291,16 @@ export default function CustomerDetailPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  {['Date', 'Amount', 'Paid', 'Due', 'Status'].map(h => (
+                  {['Invoice #', 'Date', 'Amount', 'Paid', 'Due', 'Status'].map(h => (
                     <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {invoices.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-slate-400">No invoices</td></tr>}
+                {invoices.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-slate-400">No invoices</td></tr>}
                 {invoices.map(inv => (
                   <tr key={inv.id} className="border-b border-slate-100">
+                    <td className="px-3 py-2 text-xs font-mono text-blue-600">{inv.invoice_number ?? '—'}</td>
                     <td className="px-3 py-2 text-slate-600">{formatDate(inv.date)}</td>
                     <td className="px-3 py-2 text-slate-800">{formatINR(inv.total_amount, 2)}</td>
                     <td className="px-3 py-2 text-green-600">{formatINR(inv.amount_paid, 2)}</td>

@@ -9,7 +9,7 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
 import DateInput from '@/components/ui/DateInput'
-import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO } from '@/lib/formatters'
+import { formatINR, formatDate, formatNumber, todayISO, minBackdateISO, currentFinancialYear } from '@/lib/formatters'
 import type { CustomerDueRow } from '@/types/database'
 
 // ─── Record Payment Modal ─────────────────────────────────────────────────────
@@ -48,6 +48,9 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, customerName }
     if (Object.keys(e).length) { setErrors(e); return }
     setSaving(true)
 
+    const { data: recNum } = await supabase.rpc('next_invoice_number', {
+      p_type: 'REC', p_year: currentFinancialYear(),
+    })
     await supabase.from('payments').insert({
       type: 'received_from_customer',
       customer_id: customerId,
@@ -56,6 +59,7 @@ function RecordPaymentModal({ open, onClose, onSaved, customerId, customerName }
       date: form.date,
       mode: form.mode,
       notes: form.notes.trim() || null,
+      mn_number: recNum ?? null,
     })
 
     // Update invoice payment status if linked
