@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   LayoutDashboard, TrendingUp, Building2, ClipboardList, Receipt, Car,
-  Settings, Package, ShoppingCart, Truck, ChevronRight, LogOut,
+  Settings, Package, ShoppingCart, Truck, ChevronRight, LogOut, UserCheck,
 } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 
@@ -15,6 +15,7 @@ const MENU_ITEMS = [
   { href: '/indents',   label: 'Indents',              icon: ClipboardList },
   { href: '/expenses',  label: 'Expenses',             icon: Receipt },
   { href: '/vehicles',  label: 'Vehicles / Diesel',    icon: Car },
+  { href: '/staff',     label: 'Staff & Salary',       icon: UserCheck },
   { href: '/settings',  label: 'Settings',             icon: Settings },
   { href: '/stock',     label: 'Stock Register (full)',icon: Package },
   { href: '/sales',     label: 'Sales History',        icon: ShoppingCart },

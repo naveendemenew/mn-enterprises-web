@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Droplets,
   LogOut,
+  UserCheck,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { href: '/vehicles',   label: 'Vehicles / Diesel',icon: Car },
   { href: '/profit',     label: 'Profit Analysis',  icon: TrendingUp },
   { href: '/indents',    label: 'Indents',          icon: ClipboardList },
+  { href: '/staff',      label: 'Staff & Salary',   icon: UserCheck },
   { href: '/settings',   label: 'Settings',         icon: Settings },
 ]
 
